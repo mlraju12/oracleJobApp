@@ -26,7 +26,7 @@ const { employerKey, escapeRegex } = require('./services/text');
 const { assertSafeOutboundUrl } = require('./services/outbound');
 const { ADAPTERS, adapterById, importPublicUrl } = require('./services/adapters');
 const { applyListing, refreshSource } = require('./services/collect');
-const { withinUsaScope } = require('./services/scope');
+const { reconcileListings, matchesDerived, needsDerivedFilter, relationshipOf, scheduleOf } = require('./services/reconcile');
 const { EMPLOYER_TYPES, HIRING_RELATIONSHIPS } = require('./services/employerClass');
 const { startCatalogRefresh, catalogRefreshRunning } = require('./services/catalog');
 const { loadDemo, SYNTHETIC_LABEL } = require('./demo');
@@ -161,6 +161,12 @@ function presentOpportunity(opportunity, saved, extras = {}) {
     employmentType: opportunity.employmentType,
     engagement: opportunity.engagement || 'unknown',
     workingTime: opportunity.workingTime || 'unknown',
+    employmentRelationship: relationshipOf(opportunity),
+    workSchedule: scheduleOf(opportunity),
+    contractDuration: opportunity.contractDuration || { status: 'unknown', text: null },
+    lastVerifiedAt: opportunity.lastCheckedAt || null,
+    sourceName: extras.sourceName || '',
+    adapterType: extras.adapterType || '',
     isNew: !!extras.isNew,
     workingSchedule: opportunity.workingSchedule,
     locations: opportunity.locations || [],
@@ -469,9 +475,9 @@ async function createApp(options = {}) {
       const seenAt = viewer && viewer.lastFeedSeenAt ? new Date(viewer.lastFeedSeenAt) : null;
       let items;
       let total;
-      if (req.query.scope === 'usa') {
+      if (needsDerivedFilter(req.query)) {
         const pool = await Opportunity.find(filter).sort({ lastSeenAt: -1 }).limit(500);
-        const scoped = pool.filter((item) => withinUsaScope(item));
+        const scoped = pool.filter((item) => matchesDerived(item, req.query));
         total = scoped.length;
         items = scoped.slice(skip, skip + limit);
       } else {
@@ -486,6 +492,8 @@ async function createApp(options = {}) {
         opportunityId: { $in: items.map((item) => item._id) },
       });
       const savedById = new Map(saved.map((item) => [String(item.opportunityId), item]));
+      const sourceRows = await EmployerSource.find({ tenantId: req.auth.tenantId }).select('name adapterType');
+      const sourceById = new Map(sourceRows.map((source) => [String(source._id), source]));
       const started = await kickCatalog(req.auth.tenantId, false);
       const coverage = await coverageSummary(req.auth.tenantId);
       res.json({
@@ -493,9 +501,14 @@ async function createApp(options = {}) {
         scope: req.query.scope === 'usa' ? 'usa' : 'any',
         seenAt,
         coverage,
-        opportunities: items.map((item) => presentOpportunity(item, savedById.get(String(item._id)), {
-          isNew: !!(seenAt && item.firstSeenAt && new Date(item.firstSeenAt) > seenAt),
-        })),
+        opportunities: items.map((item) => {
+          const source = sourceById.get(String(item.sourceId));
+          return presentOpportunity(item, savedById.get(String(item._id)), {
+            isNew: !!(seenAt && item.firstSeenAt && new Date(item.firstSeenAt) > seenAt),
+            sourceName: source ? source.name : '',
+            adapterType: source ? source.adapterType : '',
+          });
+        }),
         collection: {
           refreshing: started || catalogRefreshRunning(req.auth.tenantId),
         },
@@ -549,7 +562,10 @@ async function createApp(options = {}) {
       });
       const user = await User.findOne({ _id: req.auth.userId, tenantId: req.auth.tenantId });
       res.json({
-        opportunity: presentOpportunity(opportunity, saved),
+        opportunity: presentOpportunity(opportunity, saved, {
+          sourceName: source ? source.name : '',
+          adapterType: source ? source.adapterType : '',
+        }),
         source: source ? presentSource(source) : null,
         application: application ? presentApplication(application) : null,
         resume: presentResume(user && user.resume),
@@ -944,32 +960,33 @@ function sanitizeFilters(filters) {
     engagement: String(source.engagement || ''),
     employerType: String(source.employerType || ''),
     hiringRelationship: String(source.hiringRelationship || ''),
+    relationship: String(source.relationship || ''),
+    schedule: String(source.schedule || ''),
+    postedAfter: String(source.postedAfter || '').slice(0, 10),
+    postedBefore: String(source.postedBefore || '').slice(0, 10),
+    discoveredAfter: String(source.discoveredAfter || '').slice(0, 10),
+    discoveredBefore: String(source.discoveredBefore || '').slice(0, 10),
   };
 }
 
 async function coverageSummary(tenantId) {
   const sources = await EmployerSource.find({ tenantId, synthetic: { $ne: true } });
   const live = { tenantId, synthetic: { $ne: true } };
-  const [verifiedActive, unverified, unknownPostedDate] = await Promise.all([
-    Opportunity.countDocuments({ ...live, listingStatus: 'active', applicationOpen: 'listed_by_source' }),
+  const [docs, unverified, unknownPostedDate] = await Promise.all([
+    Opportunity.find(live).select('synthetic listingStatus applicationOpen oracle.platform oracle.relevance employerType employerName employmentType engagement workingTime employmentRelationship workSchedule workplace locations geography publishedAt publishedAtStatus reviewFlags'),
     Opportunity.countDocuments({ ...live, $or: [{ listingStatus: 'unknown' }, { presenceConfidence: 'unverified' }, { applicationOpen: 'not_established' }] }),
     Opportunity.countDocuments({ ...live, publishedAtStatus: { $ne: 'published' } }),
   ]);
-  let lastCollectionAt = null;
-  for (const source of sources) {
-    const stamp = source.lastSuccessfulCollectionAt || source.lastRunAt;
-    if (stamp && (!lastCollectionAt || stamp > lastCollectionAt)) lastCollectionAt = stamp;
-  }
+  const reconciled = reconcileListings(docs, sources);
   return {
-    label: 'Listings found across monitored sources',
+    ...reconciled,
     configured: sources.length,
-    checked: sources.filter((source) => source.lastRunStatus === 'complete' || source.lastRunStatus === 'partial').length,
-    failing: sources.filter((source) => source.status === 'failing' || source.lastRunStatus === 'failed').length,
-    unsupported: sources.filter((source) => source.status === 'unsupported').length,
-    verifiedActive,
+    checked: reconciled.checkedBoards,
+    failing: reconciled.failingBoards,
+    unsupported: reconciled.unsupportedBoards,
+    verifiedActive: reconciled.sourceListedActive,
     unverified,
     unknownPostedDate,
-    lastCollectionAt,
   };
 }
 

@@ -98,6 +98,14 @@ function pwcIdentity(url) {
   };
 }
 
+function pwcLocation(url) {
+  const match = String(url || '').match(/\/job\/([A-Z]{2})-([^/?#]+)\//);
+  if (!match) return [];
+  const locality = match[2].replace(/-/g, ' ').trim();
+  if (!locality) return [];
+  return [{ label: `${locality}, ${match[1]}`, locality, region: match[1], country: null }];
+}
+
 function mapPwcJobs(html) {
   const jobs = jsonArrayAfter(html, 'eagerLoadRefineSearch');
   const totalMatch = String(html || '').match(/"totalHits"\s*:\s*(\d+)/);
@@ -111,6 +119,7 @@ function mapPwcJobs(html) {
       title,
       descriptionText: typeof job.descriptionTeaser === 'string' ? job.descriptionTeaser : '',
       employmentType: job.type || null,
+      locations: pwcLocation(job.applyUrl),
     };
   }).filter((job) => job.sourceJobId && job.canonicalUrl);
   return { listings, totalHits };

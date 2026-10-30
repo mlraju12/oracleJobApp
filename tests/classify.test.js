@@ -363,6 +363,20 @@ describe('relevance, engagement, and United States scope', () => {
     });
     expect(vendors.platform).toBe('unrelated_oracle');
     expect(vendors.relevance.score).toBe(0);
+
+    const otherProduct = classifyOracleHcm({
+      title: 'Senior Consultant / Manager SAP SuccessFactors',
+      description: 'Required: Oracle Cloud HCM payroll and benefits.',
+    });
+    expect(otherProduct.platform).toBe('unrelated_oracle');
+    expect(otherProduct.relevance.score).toBe(0);
+    expect(otherProduct.suppressedReason).toMatch(/different product/);
+
+    const hcmAndErp = classifyOracleHcm({
+      title: 'Oracle Program Manager - CX, ERP, HCM',
+      description: 'Oracle Cloud HCM and ERP.',
+    });
+    expect(hcmAndErp.platform).toBe('oracle_cloud_hcm');
   });
 
   test('keeps contract off part-time and records an internship without calling it a project', () => {
@@ -374,6 +388,19 @@ describe('relevance, engagement, and United States scope', () => {
     expect(contract.employmentType).toBe('contract');
     expect(contract.engagement).toBe('contract');
     expect(contract.workingTime).toBe('unknown');
+    expect(contract.employmentRelationship).toBe('contractor');
+    expect(contract.workSchedule).toBe('unknown');
+
+    const fullTimeContract = record({
+      sourceJobId: 'ft-contract',
+      title: 'Oracle Cloud HCM consultant',
+      descriptionText: 'Full-time contract for 6 months. Remote.',
+    });
+    expect(fullTimeContract.employmentRelationship).toBe('contractor');
+    expect(fullTimeContract.workSchedule).toBe('full_time');
+    expect(fullTimeContract.workSchedule).not.toBe('part_time');
+    expect(fullTimeContract.contractDuration).toMatchObject({ status: 'stated', text: 'contract for 6 months' });
+    expect(fullTimeContract.workplace).toBe('remote');
 
     const salaried = record({
       sourceJobId: 'salaried-role',

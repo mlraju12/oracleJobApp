@@ -53,8 +53,15 @@ function extractEmployment(text) {
     if (match) found.push({ type, excerpt: collapse(match[0]) });
   }
   const unique = [...new Map(found.map((item) => [item.type, item])).values()];
-  if (unique.length === 1) {
-    return { employmentType: unique[0].type, excerpt: unique[0].excerpt, conflicting: false };
+  const scheduleTypes = unique.filter((item) => item.type === 'full_time' || item.type === 'part_time');
+  const relationTypes = unique.filter((item) => item.type === 'contract' || item.type === 'contract_to_hire' || item.type === 'temporary' || item.type === 'project_based');
+  if (scheduleTypes.length <= 1 && relationTypes.length <= 1 && unique.length === scheduleTypes.length + relationTypes.length && unique.length > 0) {
+    const chosen = relationTypes[0] || scheduleTypes[0];
+    return {
+      employmentType: chosen.type,
+      excerpt: unique.map((item) => item.excerpt).join('; '),
+      conflicting: false,
+    };
   }
   if (unique.length > 1) {
     return { employmentType: 'unknown', excerpt: unique.map((item) => item.excerpt).join('; '), conflicting: true };
@@ -78,6 +85,28 @@ function deriveWorkingTime(text, employmentType, schedule) {
   if (employmentType === 'full_time' || /\bfull[-\s]?time\b/i.test(source)) return 'full_time';
   if (schedule && schedule.status === 'published' && schedule.hoursPerWeek) return 'stated_hours';
   return 'unknown';
+}
+
+function deriveEmploymentRelationship(text, employmentType, engagement) {
+  if (employmentType === 'contract' || employmentType === 'contract_to_hire' || engagement === 'contract' || engagement === 'contract_to_hire') {
+    return 'contractor';
+  }
+  if (employmentType === 'temporary' || engagement === 'temporary' || engagement === 'internship') return 'temporary';
+  if (engagement === 'permanent' || /\b(?:salaried|regular employee|w-?2)\b/i.test(text || '')) return 'employee';
+  return 'unknown';
+}
+
+function deriveWorkSchedule(text, workingTime) {
+  if (/\bvariable hours\b|\bhours vary\b|\bvarying hours\b/i.test(text || '')) return 'variable';
+  if (workingTime === 'part_time') return 'part_time';
+  if (workingTime === 'full_time') return 'full_time';
+  return 'unknown';
+}
+
+function extractContractDuration(text) {
+  const match = String(text || '').match(/\b\d{1,2}\s*(?:-|–)?\s*(?:month|months|week|weeks|year|years)\s+contract\b|\bcontract\s+(?:of|for)\s+\d{1,2}\s*(?:month|months|week|weeks|year|years)\b/i);
+  if (!match) return { status: 'unknown', text: null };
+  return { status: 'stated', text: collapse(match[0]) };
 }
 
 function extractHours(text) {
@@ -317,7 +346,13 @@ function buildListingRecord(partial) {
     ? partial.publishedAt
     : extractPublishedDate(descriptionText);
   const oracle = classifyOracleHcm({ title, description: descriptionText });
-  if (oracle.platform === 'oracle_cloud_hcm' && oracle.confidence < 0.6) {
+  if (oracle.suppressedReason) {
+    reviewFlags.push({
+      code: 'title_product_conflict',
+      message: oracle.suppressedReason,
+      excerpt: title,
+    });
+  } else if (oracle.platform === 'oracle_cloud_hcm' && oracle.confidence < 0.6) {
     reviewFlags.push({
       code: 'low_confidence',
       message: 'Oracle Cloud HCM wording is present, but the role and module signals are thin.',
@@ -325,10 +360,14 @@ function buildListingRecord(partial) {
     });
   }
 
+  const postingText = `${title}\n${descriptionText}`;
   const workingSchedule = extractHours(descriptionText);
   const skills = extractSkills(descriptionText);
-  const engagement = deriveEngagement(`${title}\n${descriptionText}`, employmentType);
-  const workingTime = deriveWorkingTime(`${title}\n${descriptionText}`, employmentType, workingSchedule);
+  const engagement = deriveEngagement(postingText, employmentType);
+  const workingTime = deriveWorkingTime(postingText, employmentType, workingSchedule);
+  const employmentRelationship = deriveEmploymentRelationship(postingText, employmentType, engagement);
+  const workSchedule = deriveWorkSchedule(postingText, workingTime);
+  const contractDuration = extractContractDuration(postingText);
   const contentHash = sha256(JSON.stringify({
     title,
     descriptionText,
@@ -336,7 +375,7 @@ function buildListingRecord(partial) {
     hours: workingSchedule.publishedText,
     locations: locations.map((location) => location.label),
     compensation: compensation.raw,
-    workplace: extractWorkplace(descriptionText, locations),
+    workplace: extractWorkplace(postingText, locations),
   }));
 
   return {
@@ -349,10 +388,13 @@ function buildListingRecord(partial) {
     employmentType,
     engagement,
     workingTime,
+    employmentRelationship,
+    workSchedule,
+    contractDuration,
     workingSchedule,
     locations,
-    workplace: extractWorkplace(descriptionText, locations),
-    geography: extractGeography(descriptionText),
+    workplace: extractWorkplace(postingText, locations),
+    geography: extractGeography(postingText),
     compensation,
     skills,
     oracle,
@@ -377,6 +419,9 @@ module.exports = {
   extractEmployment,
   deriveEngagement,
   deriveWorkingTime,
+  deriveEmploymentRelationship,
+  deriveWorkSchedule,
+  extractContractDuration,
   extractHours,
   extractCompensation,
   compensationFromStructured,

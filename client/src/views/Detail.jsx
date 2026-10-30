@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { api } from '../api';
-import { PERSONAL, employmentLabel, hours, money, platformLabel, published, roleLabel, when, workplaceLabel } from '../labels';
+import { PERSONAL, employmentLabel, hours, money, platformLabel, published, relationshipLabel, roleLabel, scheduleLabel, when, whenZone, workplaceLabel } from '../labels';
 
 export default function Detail({ id, onBack }) {
   const [payload, setPayload] = useState(null);
@@ -82,12 +82,20 @@ export default function Detail({ id, onBack }) {
         <p className="mt-2 text-sm text-slate-600">{opportunity.classificationEvidence}</p>
         <Classification opportunity={opportunity} onSaved={(next) => setPayload({ ...payload, opportunity: next })} />
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-slate-100 px-2 py-1">{relationshipLabel(opportunity.employmentRelationship)} · {scheduleLabel(opportunity.workSchedule)}</span>
           <span className="rounded-full bg-slate-100 px-2 py-1">{employmentLabel(opportunity.employmentType)}</span>
           <span className="rounded-full bg-slate-100 px-2 py-1">{workplaceLabel(opportunity.workplace)}</span>
           <span className="rounded-full bg-slate-100 px-2 py-1">{platformLabel(opportunity.oracle.platform)}</span>
           <span className="rounded-full bg-slate-100 px-2 py-1">{roleLabel(opportunity.oracle.roleCategory)}</span>
           {opportunity.presenceConfidence === 'unverified' && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-900">Presence unverified</span>}
         </div>
+        <p className="mt-3 text-sm text-slate-600">Source: {opportunity.sourceName || 'Not stored'}{opportunity.adapterType ? ` · ${opportunity.adapterType}` : ''}. Posted {published(opportunity)}. First discovered {when(opportunity.firstSeenAt)}. Last seen {when(opportunity.lastSeenAt)}. Last verified {whenZone(opportunity.lastVerifiedAt || opportunity.lastCheckedAt)}.</p>
+        {opportunity.listingStatusEvidence && opportunity.listingStatusEvidence.note && (
+          <p className="mt-1 text-sm text-slate-600">{opportunity.listingStatusEvidence.note}</p>
+        )}
+        {opportunity.contractDuration && opportunity.contractDuration.status === 'stated' && (
+          <p className="mt-1 text-sm text-slate-600">Contract duration stated by the source: {opportunity.contractDuration.text}</p>
+        )}
         {opportunity.canonicalUrl ? (
           <a className="mt-4 inline-flex items-center gap-2 text-sm text-cyan-700" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
             Open original posting <ExternalLink size={16} />

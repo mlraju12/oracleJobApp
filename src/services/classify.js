@@ -66,6 +66,14 @@ function matchRules(text, rules) {
   return matches;
 }
 
+function titleHasHcmRole(title) {
+  return /\bhcm\b|\bpayroll\b|\babsence\b|\btime\s+(?:and|&)\s+labou?r\b|\botl\b|\bfast\s+formulas?\b|\bcore\s+hr\b|\bjourneys\b/i.test(title || '');
+}
+
+function titleNamesOtherProduct(title) {
+  return /\bsuccessfactors\b|\bsap\b|\b(?:fusion|cloud)\s+erp\b|\berp\b|\bepm\b|\bhyperion\b|\bscm\b|\bsupply\s+chain\b|\bnetsuite\b|\bstorage\b|\bocm\b|\bchange\s+management\b|\btraining\s+(?:manager|lead|consultant)\b|\bplatforms?\b/i.test(title || '');
+}
+
 function classifyOracleHcm(input) {
   const title = collapse(input && input.title);
   const description = collapse(input && input.description);
@@ -82,6 +90,12 @@ function classifyOracleHcm(input) {
   else if (ebs.length) platform = 'ebs_only';
   else if (peoplesoft.length) platform = 'peoplesoft_only';
   else if (oracleMention) platform = 'unrelated_oracle';
+
+  let suppressedReason = '';
+  if ((platform === 'oracle_cloud_hcm' || platform === 'mixed') && titleNamesOtherProduct(title) && !titleHasHcmRole(title)) {
+    platform = oracleMention ? 'unrelated_oracle' : 'unrelated';
+    suppressedReason = 'The title names a different product. Oracle Cloud HCM wording in the description was not treated as the role.';
+  }
 
   const cloudContext = platform === 'oracle_cloud_hcm' || platform === 'mixed';
   const modules = [];
@@ -146,6 +160,7 @@ function classifyOracleHcm(input) {
     matches,
     confidence,
     relevance,
+    suppressedReason,
   };
 }
 

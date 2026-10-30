@@ -141,6 +141,35 @@ export function workplaceLabel(value) {
   return 'Not stated';
 }
 
+export function relationshipLabel(value) {
+  if (value === 'employee') return 'Employee';
+  if (value === 'contractor') return 'Contractor';
+  if (value === 'temporary') return 'Temporary';
+  return 'Not stated';
+}
+
+export function scheduleLabel(value) {
+  if (value === 'full_time') return 'Full-time';
+  if (value === 'part_time') return 'Part-time';
+  if (value === 'variable') return 'Variable hours';
+  return 'Not stated';
+}
+
+export function whenZone(value) {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(date);
+}
+
 export function when(value) {
   if (!value) return 'Not available';
   const date = new Date(value);

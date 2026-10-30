@@ -38,6 +38,12 @@ export default function App() {
     engagement: '',
     employerType: '',
     hiringRelationship: '',
+    relationship: '',
+    schedule: '',
+    postedAfter: '',
+    postedBefore: '',
+    discoveredAfter: '',
+    discoveredBefore: '',
   });
   const [error, setError] = useState('');
 
@@ -64,7 +70,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-slate-200">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4">
           <div>
@@ -135,7 +141,7 @@ function Login({ onUser }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center bg-slate-100 px-4">
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center bg-slate-200 px-4">
       <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">SLP Microsystems</p>
       <h1 className="mt-1 text-2xl font-semibold">Oracle HCM Opportunities</h1>
       <p className="mt-2 text-sm text-slate-600">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { api } from '../api';
-import { EMPLOYMENT, EMPLOYER_TYPES, ENGAGEMENT, HIRING_RELATIONSHIPS, MODULES, PLATFORMS, ROLES, applicationOpenLabel, employerTypeLabel, employmentLabel, hiringRelationshipLabel, published, workplaceLabel, when } from '../labels';
+import { EMPLOYMENT, EMPLOYER_TYPES, ENGAGEMENT, HIRING_RELATIONSHIPS, MODULES, PLATFORMS, ROLES, applicationOpenLabel, employerTypeLabel, employmentLabel, hiringRelationshipLabel, published, relationshipLabel, scheduleLabel, workplaceLabel, when, whenZone } from '../labels';
 
 const EMPTY = {
   q: '',
@@ -19,6 +19,12 @@ const EMPTY = {
   engagement: '',
   employerType: '',
   hiringRelationship: '',
+  relationship: '',
+  schedule: '',
+  postedAfter: '',
+  postedBefore: '',
+  discoveredAfter: '',
+  discoveredBefore: '',
 };
 
 export default function Feed({ filters, setFilters, onOpen }) {
@@ -99,8 +105,9 @@ export default function Feed({ filters, setFilters, onOpen }) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Opportunities</h2>
-          <p className="text-sm text-slate-600">{data.coverage ? data.coverage.label : 'Listings found across monitored sources'}: {data.total}. This is not the whole Oracle HCM job market. Demo listings stay hidden.</p>
-          {filters.scope === 'usa' && <p className="text-sm text-slate-600">United States scope is on. A remote job stays when its geographic eligibility is unknown.</p>}
+          <p className="text-sm text-slate-600">{data.coverage ? data.coverage.label : 'Listings found across monitored sources'}: {data.total} in this view. This is not the whole Oracle HCM job market. Demo listings stay hidden.</p>
+          {filters.scope === 'usa' && <p className="text-sm text-slate-600">United States scope is on. A remote job stays when its geographic eligibility is unknown. A named non-US place is left out.</p>}
+          {filters.scope === 'other' && <p className="text-sm text-slate-600">Other countries shows listings that state a non-US place or remote restriction.</p>}
           {collection && collection.refreshing && <p className="text-sm text-cyan-700">Reading public career boards and their published requirements.</p>}
         </div>
         <div className="flex gap-2">
@@ -115,7 +122,9 @@ export default function Feed({ filters, setFilters, onOpen }) {
         <Select label="Platform" value={filters.platform} onChange={(platform) => setFilters({ ...filters, platform })} options={PLATFORMS} />
         <Select label="Employment" value={filters.employmentType} onChange={(employmentType) => setFilters({ ...filters, employmentType })} options={EMPLOYMENT} />
         <Select label="Engagement" value={filters.engagement || ''} onChange={(engagement) => setFilters({ ...filters, engagement })} options={ENGAGEMENT} />
-        <Select label="Geography" value={filters.scope || ''} onChange={(scope) => setFilters({ ...filters, scope })} options={[['', 'Any geography'], ['usa', 'United States']]} />
+        <Select label="Relationship" value={filters.relationship || ''} onChange={(relationship) => setFilters({ ...filters, relationship })} options={[['', 'Any relationship'], ['employee', 'Employee'], ['contractor', 'Contractor'], ['temporary', 'Temporary'], ['unknown', 'Not stated']]} />
+        <Select label="Schedule" value={filters.schedule || ''} onChange={(schedule) => setFilters({ ...filters, schedule })} options={[['', 'Any schedule'], ['full_time', 'Full-time'], ['part_time', 'Part-time'], ['variable', 'Variable hours'], ['unknown', 'Not stated']]} />
+        <Select label="Geography" value={filters.scope || ''} onChange={(scope) => setFilters({ ...filters, scope })} options={[['', 'Any geography'], ['usa', 'United States'], ['other', 'Other countries']]} />
         <Select label="Employer type" value={filters.employerType || ''} onChange={(employerType) => setFilters({ ...filters, employerType })} options={EMPLOYER_TYPES} />
         <Select label="Hiring relationship" value={filters.hiringRelationship || ''} onChange={(hiringRelationship) => setFilters({ ...filters, hiringRelationship })} options={HIRING_RELATIONSHIPS} />
         <Select label="Role" value={filters.roleCategory} onChange={(roleCategory) => setFilters({ ...filters, roleCategory })} options={ROLES} />
@@ -135,6 +144,18 @@ export default function Feed({ filters, setFilters, onOpen }) {
         </label>
         <label className="text-sm">Location
           <input className="field" value={filters.location} onChange={(event) => setFilters({ ...filters, location: event.target.value })} />
+        </label>
+        <label className="text-sm">Posted from
+          <input className="field" type="date" value={filters.postedAfter || ''} onChange={(event) => setFilters({ ...filters, postedAfter: event.target.value })} />
+        </label>
+        <label className="text-sm">Posted through
+          <input className="field" type="date" value={filters.postedBefore || ''} onChange={(event) => setFilters({ ...filters, postedBefore: event.target.value })} />
+        </label>
+        <label className="text-sm">First discovered from
+          <input className="field" type="date" value={filters.discoveredAfter || ''} onChange={(event) => setFilters({ ...filters, discoveredAfter: event.target.value })} />
+        </label>
+        <label className="text-sm">First discovered through
+          <input className="field" type="date" value={filters.discoveredBefore || ''} onChange={(event) => setFilters({ ...filters, discoveredBefore: event.target.value })} />
         </label>
         <label className="text-sm">Listing status
           <select className="field" value={filters.listingStatus} onChange={(event) => setFilters({ ...filters, listingStatus: event.target.value })}>
@@ -172,14 +193,25 @@ export default function Feed({ filters, setFilters, onOpen }) {
         </div>
       </div>
       {data.coverage && (
-        <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-4">
-          <p className="panel p-3">Employers configured: {data.coverage.configured}</p>
-          <p className="panel p-3">Sources checked: {data.coverage.checked}</p>
-          <p className="panel p-3">Failing or unsupported: {data.coverage.failing + data.coverage.unsupported}</p>
-          <p className="panel p-3">Verified active: {data.coverage.verifiedActive}</p>
-          <p className="panel p-3">Unverified: {data.coverage.unverified}</p>
-          <p className="panel p-3">Unknown posting date: {data.coverage.unknownPostedDate}</p>
-          <p className="panel p-3 md:col-span-2">Last collection: {when(data.coverage.lastCollectionAt)}</p>
+        <div className="panel space-y-3 p-4 text-sm text-slate-700">
+          <p>{data.coverage.activeMeaning}</p>
+          <p>{data.coverage.equation}</p>
+          <p>The {data.coverage.boards} configured sources are employer career boards and public searches. They use {data.coverage.adapters} adapters. That is monitored-source coverage, not the whole job market.</p>
+          <div className="grid gap-2 md:grid-cols-4">
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Oracle Cloud HCM: {data.coverage.oracleCloudHcm}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Mixed Cloud with EBS or PeopleSoft: {data.coverage.mixed}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">End-user employers: {data.coverage.endUserEmployers}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Consulting employers: {data.coverage.consultingEmployers}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Full-time: {data.coverage.schedule && data.coverage.schedule.full_time}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Part-time: {data.coverage.schedule && data.coverage.schedule.part_time}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Contract relationship: {data.coverage.relationship && data.coverage.relationship.contractor}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Schedule not stated: {data.coverage.schedule && data.coverage.schedule.unknown}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">United States scope: {data.coverage.geography && data.coverage.geography.usa}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Other countries: {data.coverage.geography && data.coverage.geography.other}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Boards checked: {data.coverage.checked}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Unsupported: {data.coverage.unsupported}. Failing: {data.coverage.failing}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3 md:col-span-2">Last successful collection: {whenZone(data.coverage.lastCollectionAt)}</p>
+          </div>
         </div>
       )}
       {error && <p className="text-sm text-amber-800">{error}</p>}
@@ -195,38 +227,50 @@ export default function Feed({ filters, setFilters, onOpen }) {
         <table className="min-w-[1100px] w-full text-left text-sm">
           <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
             <tr>
-              {['Title', 'Employer', 'Employer type', 'Hiring relationship', 'Oracle modules', 'Employment type', 'Location', 'Work arrangement', 'Published date', 'First discovered', 'Last verified', 'Status', 'Original link'].map((heading) => (
-                <th key={heading} className="px-3 py-2 font-medium">{heading}</th>
+              {['Title', 'Employer', 'Employer type', 'Hiring relationship', 'Oracle modules', 'Relationship and schedule', 'Location', 'Work arrangement', 'Published date', 'First discovered', 'Last verified', 'Status', 'Original link'].map((heading) => (
+                <th key={heading} className={`px-3 py-2 font-medium ${heading === 'Title' ? 'sticky left-0 z-10 bg-white' : ''}`}>{heading}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {data.opportunities.map((opportunity) => (
               <tr key={opportunity.id} className="border-b border-slate-100 align-top">
-                <td className="px-3 py-2">
-                  {opportunity.canonicalUrl ? (
-                    <a className="font-medium text-cyan-800" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">{opportunity.title}</a>
-                  ) : (
-                    <button className="text-left font-medium" onClick={() => onOpen(opportunity.id)}>{opportunity.title}</button>
-                  )}
-                  <button className="mt-1 block text-xs text-slate-500" onClick={() => onOpen(opportunity.id)}>Details</button>
-                  {opportunity.isNew && <span className="text-xs text-cyan-800">New</span>}
+                <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                  <button className="text-left font-medium text-slate-900" onClick={() => onOpen(opportunity.id)}>{opportunity.title}</button>
+                  <div className="mt-1 flex flex-wrap items-center gap-3">
+                    <button className="text-xs text-slate-500" onClick={() => onOpen(opportunity.id)}>Details</button>
+                    {opportunity.canonicalUrl && (
+                      <a className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-800" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
+                        Open original posting <ExternalLink size={12} />
+                      </a>
+                    )}
+                    {opportunity.isNew && <span className="text-xs text-cyan-800">New</span>}
+                  </div>
                 </td>
-                <td className="px-3 py-2">{opportunity.employerName}</td>
+                <td className="px-3 py-2">
+                  <div>{opportunity.employerName}</div>
+                  <div className="text-xs text-slate-500">{opportunity.sourceName || 'Source name not stored'}{opportunity.adapterType ? ` · ${opportunity.adapterType}` : ''}</div>
+                </td>
                 <td className="px-3 py-2">{employerTypeLabel(opportunity.employerType)}</td>
                 <td className="px-3 py-2">{hiringRelationshipLabel(opportunity.hiringRelationship)}</td>
                 <td className="px-3 py-2">{(opportunity.oracle && opportunity.oracle.modules || []).join(', ') || 'Not tagged'}</td>
-                <td className="px-3 py-2">{employmentLabel(opportunity.employmentType)}</td>
+                <td className="px-3 py-2">{relationshipLabel(opportunity.employmentRelationship)} · {scheduleLabel(opportunity.workSchedule)}</td>
                 <td className="px-3 py-2">{opportunity.locations.map((location) => location.label).join(', ') || 'Not published'}</td>
                 <td className="px-3 py-2">{workplaceLabel(opportunity.workplace)}</td>
                 <td className="px-3 py-2">{published(opportunity)}</td>
                 <td className="px-3 py-2">{when(opportunity.firstSeenAt)}</td>
                 <td className="px-3 py-2">{when(opportunity.lastCheckedAt)}</td>
-                <td className="px-3 py-2">{opportunity.listingStatus} · {applicationOpenLabel(opportunity.applicationOpen)}</td>
+                <td className="px-3 py-2">
+                  <div>{opportunity.listingStatus} · {applicationOpenLabel(opportunity.applicationOpen)}</div>
+                  <div className="text-xs text-slate-500">Verified {when(opportunity.lastVerifiedAt || opportunity.lastCheckedAt)}</div>
+                  {opportunity.listingStatusEvidence && opportunity.listingStatusEvidence.note && (
+                    <div className="text-xs text-slate-500">{opportunity.listingStatusEvidence.note}</div>
+                  )}
+                </td>
                 <td className="px-3 py-2">
                   {opportunity.canonicalUrl ? (
-                    <a className="inline-flex items-center gap-1 font-semibold text-cyan-800" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
-                      Open <ExternalLink size={14} />
+                    <a className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-cyan-800" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
+                      Open original posting <ExternalLink size={14} />
                     </a>
                   ) : 'Not published'}
                 </td>

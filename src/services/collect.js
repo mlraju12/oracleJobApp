@@ -39,6 +39,9 @@ function assignListing(doc, source, incoming, now) {
   doc.employmentType = incoming.employmentType;
   doc.engagement = incoming.engagement || 'unknown';
   doc.workingTime = incoming.workingTime || 'unknown';
+  doc.employmentRelationship = incoming.employmentRelationship || 'unknown';
+  doc.workSchedule = incoming.workSchedule || 'unknown';
+  doc.contractDuration = incoming.contractDuration || { status: 'unknown', text: null };
   doc.workingSchedule = incoming.workingSchedule;
   doc.locations = incoming.locations;
   doc.workplace = incoming.workplace;

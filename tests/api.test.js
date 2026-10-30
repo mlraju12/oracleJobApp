@@ -138,8 +138,16 @@ describe('opportunities API', () => {
       password: 'test-password-1',
     });
     expect(registered.status).toBe(201);
+    const saved = await post(`/api/opportunities/${secretId}/save`, { personalStatus: 'interested', notes: 'Mine' });
+    expect(saved.status).toBe(200);
+    const search = await post('/api/saved-searches', { name: 'Tenant only', filters: { platform: 'oracle_cloud_hcm' } });
+    expect(search.status).toBe(201);
     const denied = await other.get(`/api/opportunities/${secretId}`);
     expect(denied.status).toBe(404);
+    const otherSaved = await other.get('/api/saved');
+    expect(otherSaved.body.saved).toHaveLength(0);
+    const otherSearches = await other.get('/api/saved-searches');
+    expect(otherSearches.body.searches).toHaveLength(0);
     const list = await other.get('/api/opportunities');
     expect(list.body.total).toBe(0);
     const sources = await other.get('/api/sources');

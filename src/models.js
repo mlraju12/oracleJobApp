@@ -49,6 +49,20 @@ const opportunitySchema = new mongoose.Schema({
     enum: ['full_time', 'part_time', 'stated_hours', 'unknown'],
     default: 'unknown',
   },
+  employmentRelationship: {
+    type: String,
+    enum: ['employee', 'contractor', 'temporary', 'unknown'],
+    default: 'unknown',
+  },
+  workSchedule: {
+    type: String,
+    enum: ['full_time', 'part_time', 'variable', 'unknown'],
+    default: 'unknown',
+  },
+  contractDuration: {
+    status: { type: String, enum: ['stated', 'unknown'], default: 'unknown' },
+    text: String,
+  },
   workingSchedule: {
     status: { type: String, enum: ['published', 'unknown'], default: 'unknown' },
     publishedText: String,

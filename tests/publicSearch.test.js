@@ -40,6 +40,7 @@ describe('public career parsers', () => {
     expect(mapped.listings[0].sourceJobId).toBe('745765WD');
     expect(mapped.listings[0].title).toBe('Oracle HCM Director');
     expect(mapped.listings[0].descriptionText).toBe('Oracle HCM director for Core HR.');
+    expect(mapped.listings[0].locations[0].label).toBe('Atlanta, GA');
     expect(JSON.stringify(mapped.listings[0])).not.toMatch(/do not store/);
 
     const result = await collectPublicSearch({

@@ -115,7 +115,7 @@ export default function Sources() {
   return (
     <div className="space-y-4">
       <div className="panel p-4 text-sm text-slate-700">
-        <p>Public boards are added automatically, including Dice’s public job search. Greenhouse, Lever, and Dice supply the posted date when they publish one. LinkedIn and Indeed do not offer a public job search. Applications are still completed on the employer site or on Dice.</p>
+        <p>Each configured source is one employer career board or one public search, not one adapter. Greenhouse, Lever, public career pages, and Dice are the adapters. One Dice search lists many employers. Public boards are added automatically. Greenhouse, Lever, and Dice supply the posted date when they publish one. LinkedIn and Indeed do not offer a public job search. Applications are still completed on the employer site or on Dice.</p>
         <button className="btn-quiet mt-3" type="button" onClick={() => setShowManual((value) => !value)}>
           {showManual ? 'Hide manual source form' : 'Add a source manually'}
         </button>
