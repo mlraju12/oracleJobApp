@@ -352,6 +352,12 @@ function buildListingRecord(partial) {
       message: oracle.suppressedReason,
       excerpt: title,
     });
+  } else if (oracle.ambiguousReason) {
+    reviewFlags.push({
+      code: 'ambiguous_oracle_hcm',
+      message: oracle.ambiguousReason,
+      excerpt: oracle.matches[0] ? oracle.matches[0].excerpt : title,
+    });
   } else if (oracle.platform === 'oracle_cloud_hcm' && oracle.confidence < 0.6) {
     reviewFlags.push({
       code: 'low_confidence',

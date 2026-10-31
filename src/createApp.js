@@ -29,6 +29,7 @@ const { applyListing, refreshSource } = require('./services/collect');
 const { reconcileListings, matchesDerived, needsDerivedFilter, relationshipOf, scheduleOf } = require('./services/reconcile');
 const { EMPLOYER_TYPES, HIRING_RELATIONSHIPS } = require('./services/employerClass');
 const { startCatalogRefresh, catalogRefreshRunning } = require('./services/catalog');
+const { discoveryReport, importEmployer, searchProviderStatus } = require('./services/discovery');
 const { loadDemo, SYNTHETIC_LABEL } = require('./demo');
 const { createStorage, encryptSecret, decryptSecret } = require('./services/platform');
 const { createBullQueue, redisUrl } = require('./services/queue');
@@ -207,6 +208,10 @@ function cleanConfig(input) {
   return {
     boardToken: String(config.boardToken || '').trim(),
     site: String(config.site || '').trim(),
+    boardName: String(config.boardName || '').trim(),
+    companyIdentifier: String(config.companyIdentifier || '').trim(),
+    pageUrl: String(config.pageUrl || '').trim(),
+    oracleOnly: !!config.oracleOnly,
     region: config.region === 'eu' ? 'eu' : 'global',
     fetchDetails: !!config.fetchDetails,
     minIntervalMs: Math.min(Math.max(Number(config.minIntervalMs) || 1000, 0), 60000),
@@ -224,7 +229,7 @@ function resolvedStatus(payload) {
       error.status = 400;
       throw error;
     }
-    if (['greenhouse-job-board', 'lever-postings'].includes(adapterType) && payload.termsReviewStatus !== 'public_read_documented') {
+    if (['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured'].includes(adapterType) && payload.termsReviewStatus !== 'public_read_documented') {
       const error = new Error('Record a public-read terms review before enabling this adapter.');
       error.status = 400;
       throw error;
@@ -492,7 +497,7 @@ async function createApp(options = {}) {
         opportunityId: { $in: items.map((item) => item._id) },
       });
       const savedById = new Map(saved.map((item) => [String(item.opportunityId), item]));
-      const sourceRows = await EmployerSource.find({ tenantId: req.auth.tenantId }).select('name adapterType');
+      const sourceRows = await EmployerSource.find({ tenantId: req.auth.tenantId }).select('name adapterType status');
       const sourceById = new Map(sourceRows.map((source) => [String(source._id), source]));
       const started = await kickCatalog(req.auth.tenantId, false);
       const coverage = await coverageSummary(req.auth.tenantId);
@@ -501,6 +506,10 @@ async function createApp(options = {}) {
         scope: req.query.scope === 'usa' ? 'usa' : 'any',
         seenAt,
         coverage,
+        sources: sourceRows
+          .filter((source) => source.status !== 'unsupported')
+          .map((source) => ({ id: String(source._id), name: source.name, adapterType: source.adapterType }))
+          .sort((left, right) => (left.adapterType === 'dice-mcp' ? -1 : right.adapterType === 'dice-mcp' ? 1 : left.name.localeCompare(right.name))),
         opportunities: items.map((item) => {
           const source = sourceById.get(String(item.sourceId));
           return presentOpportunity(item, savedById.get(String(item._id)), {
@@ -841,6 +850,53 @@ async function createApp(options = {}) {
     }
   });
 
+  app.get('/api/discovery', requireUser, async (req, res, next) => {
+    try {
+      res.json(await discoveryReport(req.auth.tenantId));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/discovery/search', requireUser, requireWriter, (req, res) => {
+    const search = searchProviderStatus();
+    if (!search.configured) return res.status(503).json({ error: search.message, search });
+    return res.status(501).json({
+      error: 'Search settings are present, but this app does not send the query until that provider’s response format is recorded. Import an official careers URL instead.',
+      search,
+    });
+  });
+
+  app.post('/api/discovery/import', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const queueDiscovery = redisUrl() && options.inlineJobs !== true && process.env.NODE_ENV !== 'test';
+      const lead = await importEmployer(req.auth.tenantId, req.body || {}, fetchDeps(options, storage), { deferResolve: queueDiscovery });
+      if (queueDiscovery) {
+        const queue = createBullQueue();
+        await queue.add('discovery.resolve', {
+          leadId: String(lead._id),
+          tenantId: String(lead.tenantId),
+        }, { jobId: `discover-${lead._id}`, attempts: 3 });
+        await queue.close();
+        return res.status(202).json({ queued: true, lead: { id: String(lead._id), name: lead.name, connectorStatus: 'candidate' } });
+      }
+      res.status(201).json({
+        queued: false,
+        lead: {
+          id: String(lead._id),
+          name: lead.name,
+          connectorStatus: lead.connectorStatus,
+          platform: lead.platform || '',
+          boardIdentifier: lead.boardIdentifier || '',
+          resolvedBoardUrl: lead.resolvedBoardUrl || '',
+          connectorReason: lead.connectorReason || '',
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api/collection/runs', requireUser, async (req, res, next) => {
     try {
       const runs = await CollectionRun.find({ tenantId: req.auth.tenantId }).sort({ startedAt: -1 }).limit(100);
@@ -941,6 +997,7 @@ function presentRun(run) {
     requests: run.requests || 0,
     completeness: run.completeness || null,
     warnings: run.warnings || [],
+    stages: run.stages || [],
   };
 }
 
@@ -966,6 +1023,8 @@ function sanitizeFilters(filters) {
     postedBefore: String(source.postedBefore || '').slice(0, 10),
     discoveredAfter: String(source.discoveredAfter || '').slice(0, 10),
     discoveredBefore: String(source.discoveredBefore || '').slice(0, 10),
+    excludeSource: String(source.excludeSource || '').slice(0, 400),
+    directEndClient: source.directEndClient === true || source.directEndClient === 'true' ? 'true' : '',
   };
 }
 
@@ -1006,11 +1065,18 @@ function opportunityFilter(tenantId, query) {
   if (query.hiringContext === 'direct_client' || query.hiringContext === 'consulting_firm') {
     filter.hiringContext = query.hiringContext;
   }
-  if (EMPLOYER_TYPES.includes(query.employerType)) filter.employerType = query.employerType;
-  if (HIRING_RELATIONSHIPS.includes(query.hiringRelationship)) filter.hiringRelationship = query.hiringRelationship;
+  if (query.directEndClient === 'true') {
+    filter.employerType = 'end_user';
+    filter.hiringRelationship = 'own_team';
+  } else {
+    if (EMPLOYER_TYPES.includes(query.employerType)) filter.employerType = query.employerType;
+    if (HIRING_RELATIONSHIPS.includes(query.hiringRelationship)) filter.hiringRelationship = query.hiringRelationship;
+  }
   if (query.synthetic === 'true') filter.synthetic = true;
   if (query.synthetic === 'false') filter.synthetic = false;
   if (query.location) filter['locations.label'] = new RegExp(escapeRegex(query.location), 'i');
+  const excludedSources = String(query.excludeSource || '').split(',').map((item) => item.trim()).filter((id) => /^[a-f0-9]{24}$/i.test(id));
+  if (excludedSources.length) filter.sourceId = { $nin: excludedSources };
   if (query.q) {
     const pattern = new RegExp(escapeRegex(query.q), 'i');
     filter.$or = [{ title: pattern }, { descriptionText: pattern }, { employerName: pattern }];

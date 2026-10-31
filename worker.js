@@ -22,6 +22,14 @@ const storage = createStorage();
 const queue = createBullQueue();
 
 async function handle(job) {
+  if (job && job.name === 'discovery.resolve') {
+    const { EmployerLead } = require('./src/models');
+    const { resolveLead } = require('./src/services/discovery');
+    const lead = await EmployerLead.findById(job.data && job.data.leadId);
+    if (!lead) return null;
+    if (String(lead.tenantId) !== String(job.data.tenantId)) return null;
+    return resolveLead(lead, { storage });
+  }
   if (!job || job.name !== 'source.refresh') return null;
   const source = await EmployerSource.findById(job.data && job.data.sourceId);
   if (!source) return null;

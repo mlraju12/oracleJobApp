@@ -3,6 +3,7 @@ const { DICE_KEYWORDS } = require('./dice');
 const { employerKey } = require('./text');
 const { isDue, refreshSource } = require('./collect');
 const { classFromSource } = require('./employerClass');
+const { createBullQueue, redisUrl } = require('./queue');
 
 const REVIEWED_ON = '2026-10-30';
 
@@ -298,6 +299,17 @@ async function startCatalogRefresh(tenantId, deps, options = {}) {
       if (!options.force && !isDue(current, new Date())) continue;
       due.push(current);
     }
+    const known = new Set(due.map((source) => String(source._id)));
+    const extras = await EmployerSource.find({
+      tenantId,
+      status: { $in: ['enabled', 'failing'] },
+      adapterType: { $in: ['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-search', 'dice-mcp'] },
+    });
+    for (const extra of extras) {
+      if (known.has(String(extra._id))) continue;
+      if (!options.force && !isDue(extra, new Date())) continue;
+      due.push(extra);
+    }
   } catch (error) {
     running.delete(key);
     throw error;
@@ -305,6 +317,18 @@ async function startCatalogRefresh(tenantId, deps, options = {}) {
   if (!due.length) {
     running.delete(key);
     return false;
+  }
+  if (redisUrl() && options.inline !== true && process.env.NODE_ENV !== 'test') {
+    const queue = createBullQueue();
+    for (const source of due) {
+      await queue.add('source.refresh', {
+        sourceId: String(source._id),
+        tenantId: String(tenantId),
+      }, { jobId: `refresh-${source._id}`, attempts: 5 });
+    }
+    await queue.close();
+    running.delete(key);
+    return true;
   }
   setImmediate(async () => {
     try {

@@ -44,6 +44,8 @@ export default function App() {
     postedBefore: '',
     discoveredAfter: '',
     discoveredBefore: '',
+    excludeSource: '',
+    directEndClient: '',
   });
   const [error, setError] = useState('');
 

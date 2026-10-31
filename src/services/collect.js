@@ -149,6 +149,7 @@ async function refreshSource(source, deps = {}) {
     updated: 0,
     removed: 0,
     fetched: 0,
+    stages: [{ stage: 'collect', at: now, note: 'Source job list requested. Discovery is a separate employer-registry stage.' }],
   });
   source.lastRunStatus = 'running';
   source.lastRunAt = now;
@@ -215,6 +216,10 @@ async function refreshSource(source, deps = {}) {
     run.requests = result.requests || 0;
     run.completeness = result.completeness || null;
     run.warnings = result.warnings || [];
+    run.stages = [
+      ...(run.stages || []),
+      { stage: 'classify', at: new Date(), note: 'Kept listings were classified from the title and the full description. Ambiguous Oracle mentions are flagged for review.' },
+    ];
     await run.save();
     source.lastRunStatus = run.status;
     if (result.complete) {
@@ -222,7 +227,7 @@ async function refreshSource(source, deps = {}) {
       source.failureCount = 0;
       if (source.status === 'failing') source.status = 'enabled';
       source.nextAttemptAt = new Date(now.getTime() + (source.refreshIntervalMinutes || 360) * 60000);
-    } else if (!result.error && (source.adapterType === 'public-search' || source.adapterType === 'dice-mcp')) {
+    } else if (!result.error && ['public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured'].includes(source.adapterType)) {
       if (source.status === 'failing') source.status = 'enabled';
       source.nextAttemptAt = new Date(now.getTime() + (source.refreshIntervalMinutes || 360) * 60000);
     } else {
@@ -258,7 +263,7 @@ async function refreshSource(source, deps = {}) {
 function isDue(source, now) {
   if (!source) return false;
   if (!['enabled', 'failing'].includes(source.status)) return false;
-  if (!['greenhouse-job-board', 'lever-postings', 'public-search', 'dice-mcp'].includes(source.adapterType)) return false;
+  if (!['greenhouse-job-board', 'lever-postings', 'public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured'].includes(source.adapterType)) return false;
   if (source.nextAttemptAt && new Date(source.nextAttemptAt) > now) return false;
   return true;
 }

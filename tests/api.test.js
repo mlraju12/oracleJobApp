@@ -491,4 +491,131 @@ describe('opportunities API', () => {
     expect(listing.oracle.platform).toBe('oracle_cloud_hcm');
     expect(listing.oracle.modules).toContain('Payroll');
   });
+
+  test('leaves out listings pulled from an excluded source', async () => {
+    const me = await agent.get('/api/auth/me');
+    const tenantId = me.body.user.tenantId;
+    const now = new Date();
+    const dice = await EmployerSource.create({
+      tenantId,
+      name: 'Dice',
+      domain: 'dice-filter.example',
+      employerKey: 'dice-filter.example',
+      adapterType: 'dice-mcp',
+      status: 'enabled',
+      termsReviewStatus: 'public_read_documented',
+    });
+    const pico = await EmployerSource.create({
+      tenantId,
+      name: 'Pico',
+      domain: 'pico-filter.example',
+      employerKey: 'pico-filter.example',
+      adapterType: 'greenhouse-job-board',
+      status: 'enabled',
+      termsReviewStatus: 'public_read_documented',
+    });
+    await applyListing(dice, {
+      sourceJobId: 'dice-filter-1',
+      title: 'Oracle Cloud HCM from Dice',
+      canonicalUrl: 'https://www.dice.com/job-detail/dice-filter-1',
+    }, { now });
+    await applyListing(pico, {
+      sourceJobId: 'pico-filter-1',
+      title: 'Oracle Cloud HCM from Pico',
+      canonicalUrl: 'https://example.com/pico-filter-1',
+    }, { now });
+    const hidden = await agent.get('/api/opportunities').query({
+      q: 'from Dice',
+      synthetic: 'false',
+      excludeSource: String(dice._id),
+    });
+    expect(hidden.status).toBe(200);
+    expect(hidden.body.opportunities.map((item) => item.title)).toEqual([]);
+    const kept = await agent.get('/api/opportunities').query({
+      q: 'from Pico',
+      synthetic: 'false',
+      excludeSource: String(dice._id),
+    });
+    expect(kept.body.opportunities.map((item) => item.title)).toEqual(['Oracle Cloud HCM from Pico']);
+    expect(kept.body.sources.some((source) => source.name === 'Dice' && source.adapterType === 'dice-mcp')).toBe(true);
+  });
+
+  test('direct end-client keeps an end user hiring its own team and leaves out an unlabeled direct hire', async () => {
+    const me = await agent.get('/api/auth/me');
+    const tenantId = me.body.user.tenantId;
+    const now = new Date();
+    const endUser = await EmployerSource.create({
+      tenantId,
+      name: 'End User Co',
+      domain: 'end-user.example',
+      employerKey: 'end-user.example',
+      adapterType: 'greenhouse-job-board',
+      employerType: 'end_user',
+      hiringRelationship: 'own_team',
+      hiringContext: 'direct_client',
+      status: 'enabled',
+      termsReviewStatus: 'public_read_documented',
+    });
+    const unlabeled = await EmployerSource.create({
+      tenantId,
+      name: 'Unlabeled Hire',
+      domain: 'unlabeled.example',
+      employerKey: 'unlabeled.example',
+      adapterType: 'dice-mcp',
+      employerType: 'unknown',
+      hiringRelationship: 'own_team',
+      hiringContext: 'direct_client',
+      status: 'enabled',
+      termsReviewStatus: 'public_read_documented',
+    });
+    await applyListing(endUser, {
+      sourceJobId: 'end-user-1',
+      title: 'Oracle Cloud HCM analyst',
+      canonicalUrl: 'https://jobs.end-user.example/1',
+    }, { now });
+    await applyListing(unlabeled, {
+      sourceJobId: 'unlabeled-1',
+      title: 'Oracle Cloud HCM analyst',
+      canonicalUrl: 'https://www.dice.com/job-detail/unlabeled-1',
+    }, { now });
+    const filtered = await agent.get('/api/opportunities').query({ directEndClient: 'true', q: 'Oracle Cloud HCM analyst' });
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.opportunities.map((item) => item.employerName)).toEqual(['End User Co']);
+  });
+
+  test('reports the missing search provider and rejects an unsafe employer URL', async () => {
+    const search = await post('/api/discovery/search', { query: 'Oracle Cloud HCM' });
+    expect(search.status).toBe(503);
+    expect(search.body.error).toMatch(/DISCOVERY_SEARCH_ENDPOINT/);
+    const discovery = await agent.get('/api/discovery');
+    expect(discovery.status).toBe(200);
+    expect(discovery.body.funnel.candidateEmployers).toBeGreaterThan(20);
+    expect(discovery.body.funnel.candidateEmployers).toBeLessThan(50);
+    expect(discovery.body.funnel.supportedBoards).toBe(1);
+    const local = await post('/api/discovery/import', {
+      name: 'Local',
+      careersUrl: 'http://127.0.0.1/careers',
+      employerType: 'end_user',
+    });
+    expect(local.status).toBe(400);
+    state.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      async text() {
+        return '<a href="https://jobs.ashbyhq.com/verifiedco">careers</a>';
+      },
+    });
+    const imported = await post('/api/discovery/import', {
+      name: 'Verified Co',
+      careersUrl: 'https://jobs.verified.example/careers',
+      evidenceUrl: 'https://jobs.verified.example/careers',
+      domain: 'verified.example',
+      employerType: 'end_user',
+    });
+    expect(imported.status).toBe(201);
+    expect(imported.body.lead.connectorStatus).toBe('supported');
+    expect(imported.body.lead.boardIdentifier).toBe('verifiedco');
+    expect(imported.body.lead.platform).toBe('ashby');
+  });
 });

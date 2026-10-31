@@ -195,7 +195,39 @@ const runSchema = new mongoose.Schema({
   requests: Number,
   completeness: mongoose.Schema.Types.Mixed,
   warnings: [String],
+  stages: [{
+    stage: String,
+    at: Date,
+    note: String,
+  }],
 }, { timestamps: true });
+
+const leadSchema = new mongoose.Schema({
+  tenantId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  key: { type: String, required: true },
+  name: { type: String, required: true },
+  domain: { type: String, default: '' },
+  careersUrl: { type: String, default: '' },
+  resolvedBoardUrl: { type: String, default: '' },
+  platform: { type: String, default: '' },
+  boardIdentifier: { type: String, default: '' },
+  geography: { type: String, default: '' },
+  employerType: { type: String, enum: ['end_user', 'consulting_firm', 'staffing_agency', 'unknown'], default: 'unknown' },
+  hiringRelationship: { type: String, enum: ['own_team', 'named_client', 'undisclosed_client', 'unknown'], default: 'unknown' },
+  evidenceUrl: { type: String, default: '' },
+  connectorStatus: {
+    type: String,
+    enum: ['candidate', 'verified', 'supported', 'unsupported', 'unresolved'],
+    default: 'candidate',
+  },
+  connectorReason: { type: String, default: '' },
+  cohort: { type: String, default: 'end_user_candidate' },
+  catalogKey: { type: String, default: '' },
+  sourceId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  lastSuccessfulCrawlAt: Date,
+  stage: { type: String, default: 'discovered' },
+}, { timestamps: true });
+leadSchema.index({ tenantId: 1, key: 1 }, { unique: true });
 
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
@@ -258,4 +290,5 @@ module.exports = {
   SavedSearch: mongoose.models.SavedSearch || mongoose.model('SavedSearch', savedSearchSchema),
   SavedOpportunity: mongoose.models.SavedOpportunity || mongoose.model('SavedOpportunity', savedOpportunitySchema),
   Application: mongoose.models.Application || mongoose.model('Application', applicationSchema),
+  EmployerLead: mongoose.models.EmployerLead || mongoose.model('EmployerLead', leadSchema),
 };

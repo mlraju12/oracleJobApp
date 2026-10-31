@@ -51,6 +51,42 @@ const ADAPTERS = [
     ],
   },
   {
+    id: 'ashby-job-board',
+    label: 'Ashby Job Postings API',
+    verified: true,
+    documentationUrl: 'https://developers.ashbyhq.com/docs/public-job-posting-api',
+    accessMethod: 'public_api',
+    summary: 'Public GET of one employer’s published Ashby job board. No API key. Application POST is not implemented.',
+    limitations: [
+      'Checked against Ashby’s public job posting API on 2026-10-31. The board name is the last segment of the hosted jobs URL. The response is the published list, not a guessed company directory.',
+      'Jobs with isListed false are left out. A missing jobs array is an incomplete read and does not close listings.',
+    ],
+  },
+  {
+    id: 'smartrecruiters-postings',
+    label: 'SmartRecruiters Posting API',
+    verified: true,
+    documentationUrl: 'https://developers.smartrecruiters.com/docs/posting-api',
+    accessMethod: 'public_api',
+    summary: 'Public GET of one company’s public postings, with offset pagination and a detail GET when the list omits the description. Application POST is not implemented.',
+    limitations: [
+      'Checked against the SmartRecruiters Posting API on 2026-10-31. destination=PUBLIC is the public set. The company identifier comes from the published careers URL, not a guessed name.',
+      'A short page or a totalFound that matches the rows fetched is a complete list. A page cap or a failed detail request stays partial and does not close listings.',
+    ],
+  },
+  {
+    id: 'public-structured',
+    label: 'Public page JobPosting data',
+    verified: true,
+    documentationUrl: null,
+    accessMethod: 'public_page',
+    summary: 'Reads JobPosting structured data already present in the public HTML. It does not run a browser and does not call an undocumented jobs endpoint.',
+    limitations: [
+      'A page with no JobPosting data is unsupported for collection. rel=next is followed only on the same host.',
+      'This adapter does not treat one HTML page as a complete career-site snapshot, so it does not close listings that were absent.',
+    ],
+  },
+  {
     id: 'public-search',
     label: 'Public career search page',
     verified: true,
@@ -178,7 +214,7 @@ function relevantOracleListing(partial) {
 function greenhouseCandidate(job) {
   const departments = Array.isArray(job.departments) ? job.departments.map((item) => item && item.name) : [];
   const blob = [job.title, ...departments].filter(Boolean).join(' ');
-  return /\boracle\b|\bpeoplesoft\b|\bpeople\s*soft\b|\bfusion\b|\be-?business\b|\bhcm\b|\bfast formula|\bcore hr\b/i.test(blob);
+  return /\boracle\b|\bpeoplesoft\b|\bpeople\s*soft\b|\bfusion\b|\be-?business\b|\bhcm\b|\bfast formula|\bcore hr\b|\bhris\b|\bhr technology\b|\bhr systems?\b|\bbusiness systems?\b|\bpayroll systems?\b|\benterprise applications?\b|\bhr applications?\b|\bhuman resources information\b/i.test(blob);
 }
 
 async function greenhouseJobList(token, deps, withContent) {
@@ -447,7 +483,247 @@ function tagText(html, tag) {
 }
 
 function jsonLdJob(html) {
+  const jobs = jsonLdJobs(html);
+  const job = jobs[0];
+  if (!job) return {};
+  const mapped = mapJsonLdJob(job, '');
+  let compensation = null;
+  const salary = job.baseSalary && (job.baseSalary.value || job.baseSalary);
+  if (salary && typeof salary === 'object' && (salary.minValue != null || salary.value != null || salary.maxValue != null)) {
+    compensation = compensationFromStructured({
+      min: Number(salary.minValue != null ? salary.minValue : salary.value),
+      max: salary.maxValue != null ? Number(salary.maxValue) : null,
+      currency: job.baseSalary.currency,
+      interval: salary.unitText,
+    });
+  }
+  return {
+    title: mapped.title,
+    description: typeof job.description === 'string' ? job.description : '',
+    employmentType: mapped.employmentType,
+    identifier: job.identifier && typeof job.identifier.value === 'string' ? job.identifier.value : null,
+    locations: mapped.locations,
+    publishedAt: mapped.publishedAt,
+    compensation,
+  };
+}
+
+const ASHBY_HOST = 'api.ashbyhq.com';
+const SMARTRECRUITERS_HOST = 'api.smartrecruiters.com';
+
+function uniqueListings(listings) {
+  const seen = new Set();
+  return (listings || []).filter((job) => {
+    if (!job || !job.sourceJobId || seen.has(job.sourceJobId)) return false;
+    seen.add(job.sourceJobId);
+    return true;
+  });
+}
+
+function boardName(source, field) {
+  const value = String((source.adapterConfig && source.adapterConfig[field]) || '').trim();
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(value)) {
+    throw new SourceFetchError(`${field} is missing or not in the documented identifier shape.`, { retryable: false });
+  }
+  return value;
+}
+
+async function collectAshby(source, deps) {
+  const name = boardName(source, 'boardName');
+  const response = await fetchJson(`https://${ASHBY_HOST}/posting-api/job-board/${encodeURIComponent(name)}?includeCompensation=true`, {
+    ...deps,
+    allowedHosts: [ASHBY_HOST],
+  });
+  const jobs = response.json && response.json.jobs;
+  if (!Array.isArray(jobs)) {
+    return {
+      listings: [],
+      complete: false,
+      applyAbsencePolicy: false,
+      pages: 1,
+      requests: 1,
+      error: 'Ashby response did not include a jobs array.',
+      completeness: { kind: 'ashby.job-board', verified: false },
+    };
+  }
+  const listings = jobs.filter((job) => job && job.isListed !== false).map(mapAshbyJob).filter((job) => job.sourceJobId);
+  const kept = source.adapterConfig && source.adapterConfig.oracleOnly ? listings.filter(relevantOracleListing) : listings;
+  return {
+    listings: uniqueListings(kept),
+    complete: true,
+    applyAbsencePolicy: true,
+    pages: 1,
+    requests: 1,
+    warnings: [],
+    completeness: {
+      kind: 'ashby.job-board',
+      fetched: jobs.length,
+      listed: listings.length,
+      oracleListings: kept.length,
+      verified: true,
+    },
+  };
+}
+
+function mapAshbyJob(job) {
+  const address = job.address && job.address.postalAddress ? job.address.postalAddress : {};
+  const label = [address.addressLocality, address.addressRegion, address.addressCountry].filter(Boolean).join(', ') || job.location || '';
+  const workplace = job.workplaceType === 'Remote' ? 'Remote' : (job.workplaceType === 'Hybrid' ? 'Hybrid' : (job.workplaceType === 'OnSite' ? 'On-site' : ''));
+  const locations = [];
+  if (label) locations.push({ label: String(label), locality: address.addressLocality || null, region: address.addressRegion || null, country: address.addressCountry || null });
+  if (workplace) locations.push({ label: workplace });
+  let publishedAt = null;
+  if (job.publishedAt) {
+    const parsed = new Date(job.publishedAt);
+    if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
+  }
+  const employment = {
+    FullTime: 'FULL_TIME',
+    PartTime: 'PART_TIME',
+    Contract: 'CONTRACT',
+    Temporary: 'TEMPORARY',
+  }[job.employmentType] || null;
+  return {
+    sourceJobId: String(job.id || job.jobUrl || ''),
+    canonicalUrl: job.jobUrl ? canonicalUrl(job.jobUrl) : null,
+    title: job.title || '',
+    descriptionText: job.descriptionPlain || '',
+    descriptionHtml: job.descriptionHtml || '',
+    locations,
+    publishedAt,
+    employmentType: employment,
+    compensation: job.compensation ? compensationFromStructured(job.compensation) : null,
+  };
+}
+
+function smartRecruitersText(posting) {
+  const ad = posting && posting.jobAd;
+  if (!ad) return '';
+  const sections = Array.isArray(ad.sections) ? ad.sections.map((section) => section && (section.text || section.title)).filter(Boolean) : [];
+  return [ad.title, ...sections].join('\n');
+}
+
+function mapSmartRecruitersJob(posting) {
+  const location = posting.location || {};
+  const label = [location.city, location.region, location.country, location.remote ? 'Remote' : ''].filter(Boolean).join(', ');
+  let publishedAt = null;
+  if (posting.releasedDate) {
+    const parsed = new Date(posting.releasedDate);
+    if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
+  }
+  const employment = posting.typeOfEmployment && (posting.typeOfEmployment.label || posting.typeOfEmployment.id);
+  return {
+    sourceJobId: String(posting.id || posting.uuid || ''),
+    canonicalUrl: posting.postingUrl || posting.applyUrl ? canonicalUrl(posting.postingUrl || posting.applyUrl) : null,
+    title: posting.name || (posting.jobAd && posting.jobAd.title) || '',
+    descriptionText: smartRecruitersText(posting),
+    locations: label ? [{ label, locality: location.city || null, region: location.region || null, country: location.country || null }] : [],
+    publishedAt,
+    employmentType: employment || null,
+  };
+}
+
+async function collectSmartRecruiters(source, deps) {
+  const company = boardName(source, 'companyIdentifier');
+  const limit = Math.min(deps.pageLimit || 100, 100);
+  const maxPages = deps.maxPages || 100;
+  const pauseMs = deps.minIntervalMs != null ? deps.minIntervalMs : ((source.adapterConfig && source.adapterConfig.minIntervalMs) || 400);
+  const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const rows = [];
+  let offset = 0;
+  let pages = 0;
+  let requests = 0;
+  let totalFound = null;
+  while (pages < maxPages) {
+    if (pages > 0 && pauseMs) await sleep(pauseMs);
+    const url = `https://${SMARTRECRUITERS_HOST}/v1/companies/${encodeURIComponent(company)}/postings?destination=PUBLIC&limit=${limit}&offset=${offset}`;
+    let response;
+    try {
+      response = await fetchJson(url, { ...deps, allowedHosts: [SMARTRECRUITERS_HOST] });
+    } catch (error) {
+      return {
+        listings: [],
+        complete: false,
+        applyAbsencePolicy: false,
+        pages,
+        requests,
+        error: error.message,
+        completeness: { kind: 'smartrecruiters.offset', fetched: rows.length, verified: false },
+      };
+    }
+    requests += 1;
+    pages += 1;
+    const body = response.json || {};
+    const content = Array.isArray(body.content) ? body.content : null;
+    if (!content) {
+      return {
+        listings: [],
+        complete: false,
+        applyAbsencePolicy: false,
+        pages,
+        requests,
+        error: 'SmartRecruiters response did not include content.',
+        completeness: { kind: 'smartrecruiters.offset', verified: false },
+      };
+    }
+    if (Number.isFinite(Number(body.totalFound))) totalFound = Number(body.totalFound);
+    rows.push(...content);
+    offset += content.length;
+    if (content.length < limit || (totalFound != null && offset >= totalFound)) break;
+  }
+  const truncated = (totalFound != null && offset < totalFound) || (totalFound == null && rows.length && rows.length % limit === 0 && pages >= maxPages);
+  const cap = deps.detailCap || 80;
+  const oracleOnly = !!(source.adapterConfig && source.adapterConfig.oracleOnly);
+  const titled = (row) => greenhouseCandidate({
+    title: [row.name, row.department && (row.department.label || row.department.name)].filter(Boolean).join(' '),
+  });
+  const selected = oracleOnly && rows.length > cap ? rows.filter(titled).slice(0, cap) : rows;
+  const listings = [];
+  const warnings = [];
+  for (let index = 0; index < selected.length; index += 1) {
+    const row = selected[index];
+    const needsDetail = !smartRecruitersText(row);
+    if (!needsDetail) {
+      const mapped = mapSmartRecruitersJob(row);
+      if (!oracleOnly || relevantOracleListing(mapped)) listings.push(mapped);
+      continue;
+    }
+    if (pauseMs) await sleep(pauseMs);
+    requests += 1;
+    try {
+      const detail = await fetchJson(`https://${SMARTRECRUITERS_HOST}/v1/companies/${encodeURIComponent(company)}/postings/${encodeURIComponent(row.id)}`, {
+        ...deps,
+        allowedHosts: [SMARTRECRUITERS_HOST],
+      });
+      const mapped = mapSmartRecruitersJob({ ...row, ...(detail.json || {}) });
+      if (!oracleOnly || relevantOracleListing(mapped)) listings.push(mapped);
+    } catch (error) {
+      warnings.push(error.message);
+    }
+  }
+  const detailTruncated = oracleOnly && rows.length > cap && selected.length < rows.filter(titled).length;
+  const complete = !truncated && !detailTruncated && warnings.length === 0;
+  return {
+    listings: uniqueListings(listings),
+    complete,
+    applyAbsencePolicy: complete,
+    pages,
+    requests,
+    warnings,
+    error: warnings.length ? 'One or more SmartRecruiters job details could not be read.' : '',
+    completeness: {
+      kind: 'smartrecruiters.offset',
+      reported: totalFound,
+      fetched: rows.length,
+      detailed: listings.length,
+      verified: complete,
+    },
+  };
+}
+
+function jsonLdJobs(html) {
   const blocks = [...String(html || '').matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  const jobs = [];
   for (const block of blocks) {
     let parsed;
     try {
@@ -456,48 +732,139 @@ function jsonLdJob(html) {
       continue;
     }
     const nodes = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed['@graph']) ? parsed['@graph'] : [parsed]);
-    const job = nodes.find((node) => node && /JobPosting/i.test(String(node['@type'] || '')));
-    if (!job || typeof job !== 'object') continue;
-    const locations = [];
-    const jobLocations = Array.isArray(job.jobLocation) ? job.jobLocation : (job.jobLocation ? [job.jobLocation] : []);
-    for (const location of jobLocations) {
-      const address = location && location.address;
-      const label = address
-        ? [address.addressLocality, address.addressRegion, address.addressCountry].filter(Boolean).join(', ')
-        : (location && location.name);
-      if (label) locations.push({ label: String(label) });
+    for (const node of nodes) {
+      if (!node || !/JobPosting/i.test(String(node['@type'] || ''))) continue;
+      jobs.push(node);
     }
-    let publishedAt = null;
-    if (typeof job.datePosted === 'string') {
-      const parsedDate = new Date(job.datePosted);
-      if (!Number.isNaN(parsedDate.getTime())) publishedAt = parsedDate;
-    }
-    let compensation = null;
-    const salary = job.baseSalary && (job.baseSalary.value || job.baseSalary);
-    if (salary && typeof salary === 'object' && (salary.minValue != null || salary.value != null || salary.maxValue != null)) {
-      compensation = compensationFromStructured({
-        min: Number(salary.minValue != null ? salary.minValue : salary.value),
-        max: salary.maxValue != null ? Number(salary.maxValue) : null,
-        currency: job.baseSalary.currency,
-        interval: salary.unitText,
+  }
+  return jobs;
+}
+
+function mapJsonLdJob(job, pageUrl) {
+  const locations = [];
+  const jobLocations = Array.isArray(job.jobLocation) ? job.jobLocation : (job.jobLocation ? [job.jobLocation] : []);
+  for (const location of jobLocations) {
+    const address = location && location.address;
+    const label = address
+      ? [address.addressLocality, address.addressRegion, address.addressCountry].filter(Boolean).join(', ')
+      : (location && location.name);
+    if (label) {
+      locations.push({
+        label: String(label),
+        locality: address && address.addressLocality ? String(address.addressLocality) : null,
+        region: address && address.addressRegion ? String(address.addressRegion) : null,
+        country: address && address.addressCountry ? String(address.addressCountry) : null,
       });
     }
-    return {
-      title: typeof job.title === 'string' ? job.title : '',
-      description: typeof job.description === 'string' ? job.description : '',
-      employmentType: typeof job.employmentType === 'string' ? job.employmentType : null,
-      identifier: job.identifier && typeof job.identifier.value === 'string' ? job.identifier.value : null,
-      locations,
-      publishedAt,
-      compensation,
-    };
   }
-  return {};
+  let publishedAt = null;
+  if (typeof job.datePosted === 'string') {
+    const parsedDate = new Date(job.datePosted);
+    if (!Number.isNaN(parsedDate.getTime())) publishedAt = parsedDate;
+  }
+  const identifier = job.identifier && (job.identifier.value || job.identifier);
+  const url = typeof job.url === 'string' && job.url ? job.url : pageUrl;
+  let canonical = null;
+  try {
+    if (url) canonical = canonicalUrl(url);
+  } catch {
+    canonical = null;
+  }
+  return {
+    sourceJobId: typeof identifier === 'string' && identifier ? identifier : `structured:${sha256(canonical || String(url || job.title || '')).slice(0, 24)}`,
+    canonicalUrl: canonical,
+    title: typeof job.title === 'string' ? job.title : '',
+    descriptionHtml: typeof job.description === 'string' ? job.description : '',
+    locations,
+    publishedAt,
+    employmentType: typeof job.employmentType === 'string' ? job.employmentType : null,
+  };
+}
+
+function nextPageUrl(html, pageUrl) {
+  const match = String(html || '').match(/<link[^>]+rel=["']next["'][^>]+href=["']([^"']+)["']/i)
+    || String(html || '').match(/<a[^>]+rel=["']next["'][^>]+href=["']([^"']+)["']/i);
+  if (!match) return null;
+  try {
+    return new URL(match[1], pageUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+async function collectStructuredPage(source, deps) {
+  const start = String((source.adapterConfig && source.adapterConfig.pageUrl) || source.careerSiteUrl || '').trim();
+  if (!start) throw new SourceFetchError('Structured page URL is missing.', { retryable: false });
+  const maxPages = deps.maxPages || 5;
+  const pauseMs = deps.minIntervalMs != null ? deps.minIntervalMs : 400;
+  const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const listings = [];
+  let pageUrl = start;
+  let pages = 0;
+  let requests = 0;
+  const warnings = [];
+  let sawNext = false;
+  while (pageUrl && pages < maxPages) {
+    if (pages > 0 && pauseMs) await sleep(pauseMs);
+    let response;
+    try {
+      response = await fetchPublic(pageUrl, { ...deps, accept: 'text/html', maxBytes: 2_000_000 });
+    } catch (error) {
+      return {
+        listings,
+        complete: false,
+        applyAbsencePolicy: false,
+        pages,
+        requests,
+        error: error.message,
+        warnings,
+        completeness: { kind: 'html.jobposting', fetched: listings.length, verified: false },
+      };
+    }
+    requests += 1;
+    pages += 1;
+    const html = response.body || '';
+    const jobs = jsonLdJobs(html).map((job) => mapJsonLdJob(job, response.url || pageUrl)).filter((job) => job.title || job.sourceJobId);
+    listings.push(...jobs);
+    const next = nextPageUrl(html, response.url || pageUrl);
+    if (!next) {
+      pageUrl = null;
+      break;
+    }
+    sawNext = true;
+    try {
+      const nextUrl = new URL(next);
+      const current = new URL(response.url || pageUrl);
+      if (nextUrl.hostname !== current.hostname) {
+        warnings.push('The next page is on a different host and was not followed.');
+        pageUrl = null;
+      } else {
+        pageUrl = nextUrl.toString();
+      }
+    } catch {
+      pageUrl = null;
+    }
+  }
+  const hitCap = sawNext && pages >= maxPages && pageUrl;
+  const complete = listings.length > 0 && !hitCap && warnings.length === 0 && !pageUrl;
+  return {
+    listings: uniqueListings(listings),
+    complete,
+    applyAbsencePolicy: false,
+    pages,
+    requests,
+    warnings,
+    error: listings.length ? '' : 'The public page did not include JobPosting structured data.',
+    completeness: { kind: 'html.jobposting', fetched: listings.length, pages, verified: false },
+  };
 }
 
 async function collectSource(source, deps) {
   if (source.adapterType === 'greenhouse-job-board') return collectGreenhouse(source, deps);
   if (source.adapterType === 'lever-postings') return collectLever(source, deps);
+  if (source.adapterType === 'ashby-job-board') return collectAshby(source, deps);
+  if (source.adapterType === 'smartrecruiters-postings') return collectSmartRecruiters(source, deps);
+  if (source.adapterType === 'public-structured') return collectStructuredPage(source, deps);
   if (source.adapterType === 'public-search') {
     const { collectPublicSearch } = require('./publicSearch');
     return collectPublicSearch(source, deps);
@@ -514,8 +881,12 @@ module.exports = {
   adapterById,
   mapGreenhouseJob,
   mapLeverJob,
+  greenhouseCandidate,
   collectGreenhouse,
   collectLever,
+  collectAshby,
+  collectSmartRecruiters,
+  collectStructuredPage,
   collectSource,
   parseKnownJobUrl,
   importPublicUrl,

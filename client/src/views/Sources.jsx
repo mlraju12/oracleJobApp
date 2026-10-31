@@ -27,11 +27,14 @@ export default function Sources() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [showManual, setShowManual] = useState(false);
+  const [discovery, setDiscovery] = useState(null);
+  const [employerImport, setEmployerImport] = useState({ name: '', careersUrl: '', evidenceUrl: '', domain: '', geography: '', employerType: 'end_user' });
 
   function load() {
-    return Promise.all([api('/api/sources'), api('/api/adapters')]).then(([sourceBody, adapterBody]) => {
+    return Promise.all([api('/api/sources'), api('/api/adapters'), api('/api/discovery')]).then(([sourceBody, adapterBody, discoveryBody]) => {
       setSources(sourceBody.sources);
       setAdapters(adapterBody.adapters);
+      setDiscovery(discoveryBody);
     });
   }
 
@@ -115,11 +118,75 @@ export default function Sources() {
   return (
     <div className="space-y-4">
       <div className="panel p-4 text-sm text-slate-700">
-        <p>Each configured source is one employer career board or one public search, not one adapter. Greenhouse, Lever, public career pages, and Dice are the adapters. One Dice search lists many employers. Public boards are added automatically. Greenhouse, Lever, and Dice supply the posted date when they publish one. LinkedIn and Indeed do not offer a public job search. Applications are still completed on the employer site or on Dice.</p>
+        <p>Each configured source is one employer career board or one public search, not one adapter. Greenhouse, Lever, Ashby, SmartRecruiters, public career pages, and Dice are the adapters. One Dice search lists many employers. Supporting Greenhouse does not monitor every Greenhouse employer. Public boards already in the catalog are added automatically. Applications are still completed on the employer site or on Dice.</p>
         <button className="btn-quiet mt-3" type="button" onClick={() => setShowManual((value) => !value)}>
           {showManual ? 'Hide manual source form' : 'Add a source manually'}
         </button>
       </div>
+      {discovery && (
+        <section className="panel space-y-3 p-4 text-sm">
+          <h2 className="text-lg font-semibold">Employer discovery</h2>
+          <p className="text-slate-700">{discovery.search && discovery.search.message}</p>
+          <p className="text-slate-600">{discovery.batchNote}</p>
+          <div className="grid gap-2 md:grid-cols-3">
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Candidate end-user employers: {discovery.funnel.candidateEmployers}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Verified career boards: {discovery.funnel.verifiedCareerBoards}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Supported end-user boards: {discovery.funnel.supportedBoards}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Collected end-user boards: {discovery.funnel.collectedBoards}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Relevant roles on collected boards: {discovery.funnel.relevantRoles}</p>
+            <p className="rounded-lg border border-slate-200 bg-white p-3">Source-listed open roles: {discovery.funnel.verifiedOpenRoles}</p>
+          </div>
+          <p className="text-slate-600">Consulting boards with a documented adapter, kept out of the end-user funnel: {discovery.funnel.consultingSupportedBoards}. Direct end-client roles in this account: {discovery.directEndClient.roles} (full-time {discovery.directEndClient.schedule.full_time}, part-time {discovery.directEndClient.schedule.part_time}, contract {discovery.directEndClient.schedule.contract}, not stated {discovery.directEndClient.schedule.unknown}).</p>
+          <form className="grid gap-3 md:grid-cols-2" onSubmit={async (event) => {
+            event.preventDefault();
+            setError('');
+            try {
+              const body = await api('/api/discovery/import', { method: 'POST', body: JSON.stringify(employerImport) });
+              setMessage(body.queued ? 'Employer import was queued for the worker.' : `${body.lead.name}: ${body.lead.connectorStatus}. ${body.lead.connectorReason || ''}`);
+              await load();
+            } catch (err) {
+              setError(err.message);
+            }
+          }}>
+            <Field label="Employer name" value={employerImport.name} onChange={(name) => setEmployerImport({ ...employerImport, name })} />
+            <Field label="Official careers URL" value={employerImport.careersUrl} onChange={(careersUrl) => setEmployerImport({ ...employerImport, careersUrl })} />
+            <Field label="Evidence URL" value={employerImport.evidenceUrl} onChange={(evidenceUrl) => setEmployerImport({ ...employerImport, evidenceUrl })} />
+            <Field label="Official domain" value={employerImport.domain} onChange={(domain) => setEmployerImport({ ...employerImport, domain })} />
+            <Field label="Geography" value={employerImport.geography} onChange={(geography) => setEmployerImport({ ...employerImport, geography })} />
+            <label className="text-sm">Employer type
+              <select className="field" value={employerImport.employerType} onChange={(event) => setEmployerImport({ ...employerImport, employerType: event.target.value })}>
+                <option value="end_user">End user</option>
+                <option value="consulting_firm">Consulting firm</option>
+                <option value="staffing_agency">Staffing agency</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </label>
+            <button className="btn md:col-span-2" type="submit">Import employer URL</button>
+          </form>
+          <div className="max-h-80 overflow-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-slate-500">
+                  <th className="py-1 pr-2">Employer</th>
+                  <th className="py-1 pr-2">Status</th>
+                  <th className="py-1 pr-2">Platform</th>
+                  <th className="py-1">Why</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(discovery.leads || []).filter((lead) => lead.cohort !== 'consulting_board').map((lead) => (
+                  <tr key={lead.id} className="border-t border-slate-200 align-top">
+                    <td className="py-1 pr-2">{lead.name}</td>
+                    <td className="py-1 pr-2">{lead.connectorStatus}</td>
+                    <td className="py-1 pr-2">{lead.platform || 'unknown'}</td>
+                    <td className="py-1">{lead.connectorReason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       {error && <p className="text-sm text-amber-800">{error}</p>}
       {message && <p className="text-sm text-cyan-800">{message}</p>}
       {showManual && (

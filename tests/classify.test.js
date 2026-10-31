@@ -377,6 +377,29 @@ describe('relevance, engagement, and United States scope', () => {
       description: 'Oracle Cloud HCM and ERP.',
     });
     expect(hcmAndErp.platform).toBe('oracle_cloud_hcm');
+
+    const businessSystems = classifyOracleHcm({
+      title: 'Business Systems Analyst',
+      description: 'Required: support Oracle Cloud HCM, Core HR, Absence, and Time and Labor for the HRIS team.',
+    });
+    expect(businessSystems.platform).toBe('oracle_cloud_hcm');
+    expect(businessSystems.modules).toEqual(expect.arrayContaining(['Core HR', 'Absence', 'Time and Labor']));
+    expect(businessSystems.suppressedReason).toBe('');
+
+    const databaseRole = classifyOracleHcm({
+      title: 'Oracle Database Administrator',
+      description: 'Manage Oracle database storage. The HR team uses Oracle Cloud HCM.',
+    });
+    expect(databaseRole.platform).toBe('unrelated_oracle');
+    expect(databaseRole.suppressedReason).toMatch(/database or ERP/);
+
+    const ambiguous = record({
+      sourceJobId: 'hris-ambiguous',
+      title: 'HRIS Analyst',
+      descriptionText: 'Experience with Oracle applications.',
+    });
+    expect(ambiguous.oracle.platform).toBe('unrelated_oracle');
+    expect(ambiguous.reviewFlags.map((flag) => flag.code)).toContain('ambiguous_oracle_hcm');
   });
 
   test('keeps contract off part-time and records an internship without calling it a project', () => {

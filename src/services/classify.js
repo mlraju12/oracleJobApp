@@ -9,6 +9,7 @@ const CLOUD_PATTERNS = [
   { label: 'Oracle Cloud HCM module', pattern: /oracle\s+(?:cloud|fusion)(?:\s+cloud)?(?:\s+hcm)?\s+(?:payroll|absence(?:\s+management)?|time\s+(?:and|&)\s+labou?r|fast\s+formulas?|benefits|journeys)/i },
   { label: 'Oracle HCM security', pattern: /oracle\s+(?:cloud\s+hcm|fusion(?:\s+hcm)?)\s+security|\bhcm\s+security\b/i },
   { label: 'Oracle HCM reports', pattern: /oracle\s+(?:cloud|fusion)(?:\s+cloud)?\s+hcm\s+reports|oracle\s+(?:cloud|fusion)(?:\s+hcm)?\s+(?:bi\s+publisher|otbi|hcm\s+extracts?)/i },
+  { label: 'Oracle Payroll', pattern: /oracle\s+payroll/i },
 ];
 
 const EBS_PATTERNS = [
@@ -70,18 +71,32 @@ function titleHasHcmRole(title) {
   return /\bhcm\b|\bpayroll\b|\babsence\b|\btime\s+(?:and|&)\s+labou?r\b|\botl\b|\bfast\s+formulas?\b|\bcore\s+hr\b|\bjourneys\b/i.test(title || '');
 }
 
-function titleNamesOtherProduct(title) {
-  return /\bsuccessfactors\b|\bsap\b|\b(?:fusion|cloud)\s+erp\b|\berp\b|\bepm\b|\bhyperion\b|\bscm\b|\bsupply\s+chain\b|\bnetsuite\b|\bstorage\b|\bocm\b|\bchange\s+management\b|\btraining\s+(?:manager|lead|consultant)\b|\bplatforms?\b/i.test(title || '');
+function titleIsHrisRole(title) {
+  return /\bhris\b|\bhr\s+technology\b|\bhr\s+systems?\b|\bbusiness\s+systems?\b|\bpayroll\s+systems?\b|\benterprise\s+applications?\b|\bhr\s+applications?\b|\bpeople\s+systems?\b|\bhuman\s+resources\s+information\b/i.test(title || '');
+}
+
+function titleNamesConflictingProduct(title) {
+  return /\bsuccessfactors\b|\bsap\b|\bnetsuite\b|\bstorage\b|\bocm\b|\bhyperion\b|\bscm\b|\bsupply\s+chain\b/i.test(title || '');
+}
+
+function titleNamesGenericSuite(title) {
+  return /\b(?:fusion|cloud)\s+erp\b|\berp\b|\bepm\b|\bdatabase\b|\bdba\b|\bchange\s+management\b|\btraining\s+(?:manager|lead|consultant)\b|\bplatforms?\b/i.test(title || '');
 }
 
 function classifyOracleHcm(input) {
   const title = collapse(input && input.title);
   const description = collapse(input && input.description);
   const text = `${title}\n${description}`;
-  const cloud = matchRules(text, CLOUD_PATTERNS);
+  let cloud = matchRules(text, CLOUD_PATTERNS);
   const ebs = matchRules(text, EBS_PATTERNS);
   const peoplesoft = matchRules(text, PEOPLESOFT_PATTERNS);
   const oracleMention = findPhrase(text, /\boracle\b/i);
+  const payrollContext = /\b(?:cloud|fusion|hcm)\b/i.test(text);
+  let ambiguousReason = '';
+  if (cloud.some((hit) => hit.label === 'Oracle Payroll') && !payrollContext) {
+    cloud = cloud.filter((hit) => hit.label !== 'Oracle Payroll');
+    ambiguousReason = 'Oracle Payroll is named without Cloud, Fusion, or HCM in the same posting.';
+  }
 
   let platform = 'unrelated';
   if (cloud.length && (ebs.length || peoplesoft.length)) platform = 'mixed';
@@ -92,9 +107,17 @@ function classifyOracleHcm(input) {
   else if (oracleMention) platform = 'unrelated_oracle';
 
   let suppressedReason = '';
-  if ((platform === 'oracle_cloud_hcm' || platform === 'mixed') && titleNamesOtherProduct(title) && !titleHasHcmRole(title)) {
+  const hrisTitle = titleIsHrisRole(title);
+  const conflictingProduct = titleNamesConflictingProduct(title);
+  const genericSuite = titleNamesGenericSuite(title) && !hrisTitle;
+  if ((platform === 'oracle_cloud_hcm' || platform === 'mixed') && !titleHasHcmRole(title) && (conflictingProduct || genericSuite)) {
     platform = oracleMention ? 'unrelated_oracle' : 'unrelated';
-    suppressedReason = 'The title names a different product. Oracle Cloud HCM wording in the description was not treated as the role.';
+    suppressedReason = conflictingProduct
+      ? 'The title names a different product. Oracle Cloud HCM wording in the description was not treated as the role.'
+      : 'The title is a generic Oracle database or ERP role. Description wording was not treated as an HCM role.';
+  }
+  if (!suppressedReason && !ambiguousReason && hrisTitle && platform === 'unrelated_oracle') {
+    ambiguousReason = 'The title is an HRIS or business-systems role, and Oracle is mentioned, but the posting does not establish Oracle Cloud HCM.';
   }
 
   const cloudContext = platform === 'oracle_cloud_hcm' || platform === 'mixed';
@@ -161,6 +184,7 @@ function classifyOracleHcm(input) {
     confidence,
     relevance,
     suppressedReason,
+    ambiguousReason,
   };
 }
 
