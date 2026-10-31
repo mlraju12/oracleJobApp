@@ -102,6 +102,8 @@ const opportunitySchema = new mongoose.Schema({
   experience: {
     status: { type: String, enum: ['published', 'unknown'], default: 'unknown' },
     yearsText: String,
+    yearsMin: Number,
+    yearsMax: Number,
     seniority: String,
   },
   workAuthorization: {
@@ -282,6 +284,16 @@ const applicationSchema = new mongoose.Schema({
 
 applicationSchema.index({ tenantId: 1, userId: 1, opportunityId: 1 }, { unique: true });
 
+const applyQueueSchema = new mongoose.Schema({
+  tenantId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  opportunityId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  position: { type: Number, required: true },
+  state: { type: String, enum: ['queued', 'opened', 'submitted', 'skipped'], default: 'queued' },
+}, { timestamps: true });
+
+applyQueueSchema.index({ tenantId: 1, userId: 1, opportunityId: 1 }, { unique: true });
+
 module.exports = {
   Opportunity: mongoose.models.Opportunity || mongoose.model('Opportunity', opportunitySchema),
   EmployerSource: mongoose.models.EmployerSource || mongoose.model('EmployerSource', sourceSchema),
@@ -290,5 +302,6 @@ module.exports = {
   SavedSearch: mongoose.models.SavedSearch || mongoose.model('SavedSearch', savedSearchSchema),
   SavedOpportunity: mongoose.models.SavedOpportunity || mongoose.model('SavedOpportunity', savedOpportunitySchema),
   Application: mongoose.models.Application || mongoose.model('Application', applicationSchema),
+  ApplyQueueItem: mongoose.models.ApplyQueueItem || mongoose.model('ApplyQueueItem', applyQueueSchema),
   EmployerLead: mongoose.models.EmployerLead || mongoose.model('EmployerLead', leadSchema),
 };

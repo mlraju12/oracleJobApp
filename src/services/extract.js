@@ -39,7 +39,7 @@ function unknownSkills() {
 }
 
 function unknownExperience() {
-  return { status: 'unknown', yearsText: null, seniority: null };
+  return { status: 'unknown', yearsText: null, yearsMin: null, yearsMax: null, seniority: null };
 }
 
 function unknownAuthorization() {
@@ -224,14 +224,33 @@ function extractSkills(text) {
   return { status: 'published', required, preferred };
 }
 
+function yearsBounds(text) {
+  const blob = String(text || '');
+  const range = blob.match(/\b(\d{1,2})\s*(?:-|–|—|to)\s*(\d{1,2})\s*years?\b(?!\s*(?:old|of age)\b)/i);
+  if (range) {
+    const low = Math.min(Number(range[1]), Number(range[2]));
+    const high = Math.max(Number(range[1]), Number(range[2]));
+    return { yearsMin: low, yearsMax: high, yearsText: collapse(range[0]) };
+  }
+  const open = blob.match(/\b(\d{1,2})\s*(?:\+|plus|or more)\s*years?\b(?!\s*(?:old|of age)\b)/i);
+  if (open) return { yearsMin: Number(open[1]), yearsMax: null, yearsText: collapse(open[0]) };
+  const atLeast = blob.match(/\b(?:at least|minimum(?: of)?|min\.?)\s*(\d{1,2})\s*years?\b(?!\s*(?:old|of age)\b)/i);
+  if (atLeast) return { yearsMin: Number(atLeast[1]), yearsMax: null, yearsText: collapse(atLeast[0]) };
+  const exact = blob.match(/\b(\d{1,2})\s*years?(?:\s+of\s+experience)?\b(?!\s*(?:old|of age)\b)/i);
+  if (exact) return { yearsMin: Number(exact[1]), yearsMax: Number(exact[1]), yearsText: collapse(exact[0]) };
+  return null;
+}
+
 function extractExperience(title, text) {
   const blob = `${title || ''}\n${text || ''}`;
-  const years = blob.match(/\b(\d+\s*(?:\+|plus)?(?:\s*-\s*\d+)?\s*years?(?:\s+of\s+experience)?)\b/i);
+  const years = yearsBounds(blob);
   const seniority = String(title || '').match(/\b(intern(?:ship)?|entry[-\s]level|junior|senior|principal|director|lead)\b/i);
   if (!years && !seniority) return unknownExperience();
   return {
     status: 'published',
-    yearsText: years ? collapse(years[1]) : null,
+    yearsText: years ? years.yearsText : null,
+    yearsMin: years ? years.yearsMin : null,
+    yearsMax: years ? years.yearsMax : null,
     seniority: seniority ? seniority[1].toLowerCase() : null,
   };
 }
@@ -433,6 +452,7 @@ module.exports = {
   compensationFromStructured,
   extractSkills,
   extractExperience,
+  yearsBounds,
   extractAuthorization,
   extractWorkplace,
   extractGeography,

@@ -618,4 +618,71 @@ describe('opportunities API', () => {
     expect(imported.body.lead.boardIdentifier).toBe('verifiedco');
     expect(imported.body.lead.platform).toBe('ashby');
   });
+
+  test('apply queue opens the posting and records only the user confirmation', async () => {
+    const me = await agent.get('/api/auth/me');
+    const source = await EmployerSource.create({
+      tenantId: me.body.user.tenantId,
+      name: 'Queue Co',
+      domain: 'queue.example',
+      employerKey: 'queue.example',
+      adapterType: 'manual',
+      ownership: 'unknown',
+      hiringContext: 'unknown',
+      status: 'paused',
+    });
+    await applyListing(source, {
+      sourceJobId: 'queue-1',
+      title: 'Oracle Cloud HCM Analyst',
+      descriptionText: 'Oracle Cloud HCM Core HR.',
+      canonicalUrl: 'https://jobs.example.com/queue-1',
+      employerName: 'Queue Co',
+    }, { now: new Date(), storage: createMemoryStorage() });
+    await applyListing(source, {
+      sourceJobId: 'queue-2',
+      title: 'Oracle Cloud HCM Consultant',
+      descriptionText: 'Oracle Cloud HCM payroll.',
+      canonicalUrl: 'https://jobs.example.com/queue-2',
+      employerName: 'Queue Co',
+    }, { now: new Date(), storage: createMemoryStorage() });
+    const listed = await agent.get('/api/opportunities').query({ q: 'Queue Co' });
+    const first = listed.body.opportunities.find((item) => item.title === 'Oracle Cloud HCM Analyst');
+    const second = listed.body.opportunities.find((item) => item.title === 'Oracle Cloud HCM Consultant');
+    expect(first && second).toBeTruthy();
+
+    let calls = 0;
+    state.fetch = async () => {
+      calls += 1;
+      throw new Error('apply queue must not contact the employer');
+    };
+    const added = await post('/api/apply-queue', { opportunityId: first.id });
+    expect(added.status).toBe(201);
+    const addedNext = await post('/api/apply-queue', { opportunityId: second.id });
+    expect(addedNext.body.items.map((item) => item.title)).toEqual([
+      'Oracle Cloud HCM Analyst',
+      'Oracle Cloud HCM Consultant',
+    ]);
+
+    const opened = await post(`/api/apply-queue/${first.id}/open`, {});
+    expect(opened.status).toBe(200);
+    expect(opened.body.url).toBe('https://jobs.example.com/queue-1');
+    expect(opened.body.note).toMatch(/does not submit the form/);
+    expect(opened.body.application.status).toBe('opened_employer_site');
+    expect(opened.body.application.resumeFileName).toBe('Ada Resume.pdf');
+    expect(calls).toBe(0);
+
+    const early = await post(`/api/apply-queue/${second.id}/submitted`, {});
+    expect(early.status).toBe(404);
+
+    const marked = await post(`/api/apply-queue/${first.id}/submitted`, {});
+    expect(marked.body.application.status).toBe('submitted_by_me');
+    expect(marked.body.next.opportunityId).toBe(second.id);
+    expect(calls).toBe(0);
+
+    const skipped = await post(`/api/apply-queue/${second.id}/skip`, {});
+    expect(skipped.body.queue.items.find((item) => item.opportunityId === second.id).state).toBe('skipped');
+    const applications = await agent.get('/api/profile');
+    expect(applications.body.applications.map((item) => item.status)).toContain('submitted_by_me');
+    expect(applications.body.applications.find((item) => item.opportunityId === second.id)).toBeUndefined();
+  });
 });

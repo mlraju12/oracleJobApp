@@ -118,7 +118,7 @@ export default function Sources() {
   return (
     <div className="space-y-4">
       <div className="panel p-4 text-sm text-slate-700">
-        <p>Each configured source is one employer career board or one public search, not one adapter. Greenhouse, Lever, Ashby, SmartRecruiters, public career pages, and Dice are the adapters. One Dice search lists many employers. Supporting Greenhouse does not monitor every Greenhouse employer. Public boards already in the catalog are added automatically. Applications are still completed on the employer site or on Dice.</p>
+        <p>Each configured source is one employer career board or one public search, not one adapter. Greenhouse, Lever, Ashby, SmartRecruiters, public career pages, Dice, Himalayas, and Jobicy are the adapters. One Dice, Himalayas, or Jobicy search lists many employers. Supporting Greenhouse does not monitor every Greenhouse employer. Public boards already in the catalog are added automatically. Applications are still completed on the employer site.</p>
         <button className="btn-quiet mt-3" type="button" onClick={() => setShowManual((value) => !value)}>
           {showManual ? 'Hide manual source form' : 'Add a source manually'}
         </button>

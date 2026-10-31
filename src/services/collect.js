@@ -3,6 +3,7 @@ const { buildListingRecord } = require('./extract');
 const { findIdentity, materialChanges } = require('./identity');
 const { collectSource } = require('./adapters');
 const { classFromSource, verificationFrom } = require('./employerClass');
+const { sha256 } = require('./text');
 
 const SYNTHETIC_LABEL = 'Synthetic demo data. Not a live employer listing.';
 
@@ -120,7 +121,8 @@ async function applyListing(source, partial, context) {
   }
   doc.sourceRefs = refs.slice(-10);
   doc.lastCollectionRunId = context.runId || null;
-  const storageKey = `tenants/${source.tenantId}/sources/${source._id}/${incoming.sourceJobId}/${incoming.contentHash}.json`;
+  const jobKey = sha256(String(incoming.sourceJobId || incoming.canonicalUrl || incoming.title)).slice(0, 32);
+  const storageKey = `tenants/${source.tenantId}/sources/${source._id}/${jobKey}/${incoming.contentHash}.json`;
   if (context.storage) {
     await context.storage.put(storageKey, JSON.stringify({
       synthetic: !!source.synthetic,
@@ -227,7 +229,7 @@ async function refreshSource(source, deps = {}) {
       source.failureCount = 0;
       if (source.status === 'failing') source.status = 'enabled';
       source.nextAttemptAt = new Date(now.getTime() + (source.refreshIntervalMinutes || 360) * 60000);
-    } else if (!result.error && ['public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured'].includes(source.adapterType)) {
+    } else if (!result.error && ['public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed'].includes(source.adapterType)) {
       if (source.status === 'failing') source.status = 'enabled';
       source.nextAttemptAt = new Date(now.getTime() + (source.refreshIntervalMinutes || 360) * 60000);
     } else {
@@ -263,7 +265,7 @@ async function refreshSource(source, deps = {}) {
 function isDue(source, now) {
   if (!source) return false;
   if (!['enabled', 'failing'].includes(source.status)) return false;
-  if (!['greenhouse-job-board', 'lever-postings', 'public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured'].includes(source.adapterType)) return false;
+  if (!['greenhouse-job-board', 'lever-postings', 'public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed'].includes(source.adapterType)) return false;
   if (source.nextAttemptAt && new Date(source.nextAttemptAt) > now) return false;
   return true;
 }

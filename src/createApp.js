@@ -21,6 +21,7 @@ const {
   SavedSearch,
   SavedOpportunity,
   Application,
+  ApplyQueueItem,
 } = require('./models');
 const { employerKey, escapeRegex } = require('./services/text');
 const { assertSafeOutboundUrl } = require('./services/outbound');
@@ -229,7 +230,7 @@ function resolvedStatus(payload) {
       error.status = 400;
       throw error;
     }
-    if (['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured'].includes(adapterType) && payload.termsReviewStatus !== 'public_read_documented') {
+    if (['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed'].includes(adapterType) && payload.termsReviewStatus !== 'public_read_documented') {
       const error = new Error('Record a public-read terms review before enabling this adapter.');
       error.status = 400;
       throw error;
@@ -584,45 +585,230 @@ async function createApp(options = {}) {
     }
   });
 
+  async function queueView(tenantId, userId) {
+    const items = await ApplyQueueItem.find({ tenantId, userId }).sort({ position: 1, createdAt: 1 });
+    const opportunities = await Opportunity.find({
+      tenantId,
+      _id: { $in: items.map((item) => item.opportunityId) },
+    });
+    const byId = new Map(opportunities.map((opportunity) => [String(opportunity._id), opportunity]));
+    const user = await User.findOne({ _id: userId, tenantId });
+    return {
+      resume: presentResume(user && user.resume),
+      items: items.map((item) => {
+        const opportunity = byId.get(String(item.opportunityId));
+        return {
+          id: String(item._id),
+          opportunityId: String(item.opportunityId),
+          state: item.state,
+          position: item.position,
+          title: opportunity ? opportunity.title : 'Listing no longer stored',
+          employerName: opportunity ? opportunity.employerName : '',
+          url: opportunity && opportunity.canonicalUrl ? opportunity.canonicalUrl : null,
+        };
+      }),
+    };
+  }
+
+  function nextQueuedItem(queue, currentOpportunityId) {
+    return queue.items.find((item) => item.state === 'queued' && item.opportunityId !== String(currentOpportunityId)) || null;
+  }
+
+  async function openEmployerPosting(auth, opportunityId) {
+    const user = await User.findOne({ _id: auth.userId, tenantId: auth.tenantId });
+    if (!user || !user.resume || !user.resume.storageKey) {
+      const error = new Error('Upload a resume before opening an application.');
+      error.status = 400;
+      throw error;
+    }
+    const opportunity = await Opportunity.findOne({ _id: opportunityId, tenantId: auth.tenantId });
+    if (!opportunity) {
+      const error = new Error('Opportunity not found.');
+      error.status = 404;
+      throw error;
+    }
+    if (!opportunity.canonicalUrl) {
+      const error = new Error('This posting did not publish an application URL.');
+      error.status = 400;
+      throw error;
+    }
+    const existing = await Application.findOne({
+      tenantId: auth.tenantId,
+      userId: auth.userId,
+      opportunityId: opportunity._id,
+    });
+    if (existing && existing.status === 'submitted_by_me') {
+      return {
+        application: existing,
+        url: opportunity.canonicalUrl,
+        alreadySubmitted: true,
+        note: 'You already marked this as submitted on the employer site. Opening the page again does not send another application.',
+      };
+    }
+    const now = new Date();
+    const application = await Application.findOneAndUpdate(
+      { tenantId: auth.tenantId, userId: auth.userId, opportunityId: opportunity._id },
+      {
+        $set: {
+          status: 'opened_employer_site',
+          employerUrl: opportunity.canonicalUrl,
+          resumeFileName: user.resume.fileName,
+          openedAt: now,
+        },
+        $setOnInsert: { tenantId: auth.tenantId, userId: auth.userId, opportunityId: opportunity._id },
+      },
+      { upsert: true, new: true }
+    );
+    return {
+      application,
+      url: opportunity.canonicalUrl,
+      alreadySubmitted: false,
+      note: 'This opens the employer posting. Attach the resume saved in this account. This app does not submit the form.',
+    };
+  }
+
   app.post('/api/opportunities/:id/apply', requireUser, requireWriter, async (req, res, next) => {
     try {
-      const user = await User.findOne({ _id: req.auth.userId, tenantId: req.auth.tenantId });
-      if (!user || !user.resume || !user.resume.storageKey) {
-        return res.status(400).json({ error: 'Upload a resume before opening an application.' });
-      }
-      const opportunity = await Opportunity.findOne({ _id: req.params.id, tenantId: req.auth.tenantId });
+      const opened = await openEmployerPosting(req.auth, req.params.id);
+      res.json({
+        application: presentApplication(opened.application),
+        url: opened.url,
+        note: opened.note,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/apply-queue', requireUser, async (req, res, next) => {
+    try {
+      res.json(await queueView(req.auth.tenantId, req.auth.userId));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/apply-queue', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const opportunity = await Opportunity.findOne({ _id: req.body.opportunityId, tenantId: req.auth.tenantId });
       if (!opportunity) return res.status(404).json({ error: 'Opportunity not found.' });
       if (!opportunity.canonicalUrl) return res.status(400).json({ error: 'This posting did not publish an application URL.' });
-      const existing = await Application.findOne({
+      const existing = await ApplyQueueItem.findOne({
         tenantId: req.auth.tenantId,
         userId: req.auth.userId,
         opportunityId: opportunity._id,
       });
-      if (existing && existing.status === 'submitted_by_me') {
-        return res.json({
-          application: presentApplication(existing),
-          url: opportunity.canonicalUrl,
-          note: 'You already marked this as submitted on the employer site. Opening the page again does not send another application.',
+      if (existing && existing.state === 'submitted') {
+        return res.status(409).json({ error: 'You already marked this posting as submitted.' });
+      }
+      if (existing && (existing.state === 'queued' || existing.state === 'opened')) {
+        return res.json(await queueView(req.auth.tenantId, req.auth.userId));
+      }
+      const last = await ApplyQueueItem.findOne({ tenantId: req.auth.tenantId, userId: req.auth.userId }).sort({ position: -1 });
+      const position = last ? last.position + 1 : 1;
+      if (existing) {
+        existing.state = 'queued';
+        existing.position = position;
+        await existing.save();
+      } else {
+        await ApplyQueueItem.create({
+          tenantId: req.auth.tenantId,
+          userId: req.auth.userId,
+          opportunityId: opportunity._id,
+          position,
+          state: 'queued',
         });
       }
-      const now = new Date();
-      const application = await Application.findOneAndUpdate(
-        { tenantId: req.auth.tenantId, userId: req.auth.userId, opportunityId: opportunity._id },
-        {
-          $set: {
-            status: 'opened_employer_site',
-            employerUrl: opportunity.canonicalUrl,
-            resumeFileName: user.resume.fileName,
-            openedAt: now,
-          },
-          $setOnInsert: { tenantId: req.auth.tenantId, userId: req.auth.userId, opportunityId: opportunity._id },
-        },
-        { upsert: true, new: true }
-      );
+      res.status(201).json(await queueView(req.auth.tenantId, req.auth.userId));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/apply-queue/:opportunityId', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const item = await ApplyQueueItem.findOne({
+        tenantId: req.auth.tenantId,
+        userId: req.auth.userId,
+        opportunityId: req.params.opportunityId,
+      });
+      if (!item) return res.status(404).json({ error: 'That posting is not in the apply queue.' });
+      if (item.state === 'submitted') return res.status(409).json({ error: 'A posting you marked as submitted stays in the queue record.' });
+      await item.deleteOne();
+      res.json(await queueView(req.auth.tenantId, req.auth.userId));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/apply-queue/:opportunityId/open', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const item = await ApplyQueueItem.findOne({
+        tenantId: req.auth.tenantId,
+        userId: req.auth.userId,
+        opportunityId: req.params.opportunityId,
+      });
+      if (!item) return res.status(404).json({ error: 'That posting is not in the apply queue.' });
+      const opened = await openEmployerPosting(req.auth, req.params.opportunityId);
+      item.state = opened.alreadySubmitted ? 'submitted' : 'opened';
+      await item.save();
+      const queue = await queueView(req.auth.tenantId, req.auth.userId);
+      res.json({
+        application: presentApplication(opened.application),
+        url: opened.url,
+        note: opened.note,
+        next: nextQueuedItem(queue, req.params.opportunityId),
+        queue,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/apply-queue/:opportunityId/submitted', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const item = await ApplyQueueItem.findOne({
+        tenantId: req.auth.tenantId,
+        userId: req.auth.userId,
+        opportunityId: req.params.opportunityId,
+      });
+      if (!item) return res.status(404).json({ error: 'That posting is not in the apply queue.' });
+      const application = await Application.findOne({
+        tenantId: req.auth.tenantId,
+        userId: req.auth.userId,
+        opportunityId: req.params.opportunityId,
+      });
+      if (!application) return res.status(404).json({ error: 'Open the employer posting first.' });
+      application.status = 'submitted_by_me';
+      application.submittedAt = new Date();
+      await application.save();
+      item.state = 'submitted';
+      await item.save();
+      const queue = await queueView(req.auth.tenantId, req.auth.userId);
       res.json({
         application: presentApplication(application),
-        url: opportunity.canonicalUrl,
-        note: 'This opens the employer application. Attach the resume saved in this account. Deloitte, PwC, EY, KPMG, and Accenture do not provide an application key, so this app does not submit the form.',
+        next: nextQueuedItem(queue, req.params.opportunityId),
+        queue,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/apply-queue/:opportunityId/skip', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const item = await ApplyQueueItem.findOne({
+        tenantId: req.auth.tenantId,
+        userId: req.auth.userId,
+        opportunityId: req.params.opportunityId,
+      });
+      if (!item) return res.status(404).json({ error: 'That posting is not in the apply queue.' });
+      if (item.state !== 'submitted') item.state = 'skipped';
+      await item.save();
+      const queue = await queueView(req.auth.tenantId, req.auth.userId);
+      res.json({
+        next: nextQueuedItem(queue, req.params.opportunityId),
+        queue,
       });
     } catch (error) {
       next(error);
@@ -1001,6 +1187,13 @@ function presentRun(run) {
   };
 }
 
+function yearFilter(value) {
+  if (value == null || value === '') return '';
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0 || number > 60) return '';
+  return String(number);
+}
+
 function sanitizeFilters(filters) {
   const source = filters && typeof filters === 'object' ? filters : {};
   return {
@@ -1023,6 +1216,8 @@ function sanitizeFilters(filters) {
     postedBefore: String(source.postedBefore || '').slice(0, 10),
     discoveredAfter: String(source.discoveredAfter || '').slice(0, 10),
     discoveredBefore: String(source.discoveredBefore || '').slice(0, 10),
+    experienceMin: yearFilter(source.experienceMin),
+    experienceMax: yearFilter(source.experienceMax),
     excludeSource: String(source.excludeSource || '').slice(0, 400),
     directEndClient: source.directEndClient === true || source.directEndClient === 'true' ? 'true' : '',
   };

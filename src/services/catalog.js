@@ -144,6 +144,40 @@ const PUBLIC_BOARDS = [
     adapterConfig: { keywords: DICE_KEYWORDS, maxPages: 1, minIntervalMs: 400 },
   },
   {
+    key: 'public:himalayas',
+    name: 'Himalayas',
+    domain: 'himalayas.app',
+    careerSiteUrl: 'https://himalayas.app/jobs/api/search?q=Oracle%20HCM',
+    atsProvider: 'himalayas',
+    adapterType: 'public-job-feed',
+    ownership: 'unknown',
+    hiringContext: 'unknown',
+    employerType: 'unknown',
+    hiringRelationship: 'unknown',
+    classificationEvidence: 'Himalayas is a public job feed. The company name on each posting is the one Himalayas printed. That does not establish end user versus consulting firm.',
+    accessDocumentationUrl: 'https://github.com/Himalayas-App/remote-jobs-api',
+    accessNotes: 'Himalayas public search GET https://himalayas.app/jobs/api/search. No API key. Checked 2026-10-31: query Oracle HCM returned a JSON job list with title, description, company, published time, and application link. Page 2 advanced with offset 20. The app stores the Himalayas job URL and does not submit the application.',
+    termsNotes: 'The Himalayas remote jobs API asks callers to credit Himalayas and link the application URL. Reviewed 2026-10-31. Jobs can be cached by the publisher. Salary is stored only when min or max is present.',
+    adapterConfig: { provider: 'himalayas', query: 'Oracle HCM', maxPages: 15, minIntervalMs: 400 },
+  },
+  {
+    key: 'public:jobicy',
+    name: 'Jobicy',
+    domain: 'jobicy.com',
+    careerSiteUrl: 'https://jobicy.com/api/v2/remote-jobs?tag=oracle',
+    atsProvider: 'jobicy',
+    adapterType: 'public-job-feed',
+    ownership: 'unknown',
+    hiringContext: 'unknown',
+    employerType: 'unknown',
+    hiringRelationship: 'unknown',
+    classificationEvidence: 'Jobicy is a public job feed. The company name on each posting is the one Jobicy printed. That does not establish end user versus consulting firm.',
+    accessDocumentationUrl: 'https://jobicy.com/jobs/api',
+    accessNotes: 'Jobicy public feed GET https://jobicy.com/api/v2/remote-jobs. No API key. Checked 2026-10-31: tag oracle returned HTTP 200 JSON, jobCount 2, hasMore false. The app stores the Jobicy job URL and does not submit the application.',
+    termsNotes: 'The Jobicy response asks callers to credit Jobicy and to send candidates to the job URL in the feed. Reviewed 2026-10-31. A response with hasMore true is not treated as a complete snapshot.',
+    adapterConfig: { provider: 'jobicy', tag: 'oracle', minIntervalMs: 400 },
+  },
+  {
     key: 'public:deloitte',
     name: 'Deloitte',
     domain: 'deloitte.com',
@@ -242,7 +276,7 @@ function boardRecord(tenantId, board) {
     ownership: board.ownership,
     hiringContext: board.hiringContext || 'consulting_firm',
     ...classFromSource({
-      hiringContext: board.hiringContext || (board.adapterType === 'dice-mcp' ? 'unknown' : 'consulting_firm'),
+      hiringContext: board.hiringContext || (['dice-mcp', 'public-job-feed'].includes(board.adapterType) ? 'unknown' : 'consulting_firm'),
       employerType: board.employerType,
       hiringRelationship: board.hiringRelationship,
       classificationEvidence: board.classificationEvidence,
@@ -303,7 +337,7 @@ async function startCatalogRefresh(tenantId, deps, options = {}) {
     const extras = await EmployerSource.find({
       tenantId,
       status: { $in: ['enabled', 'failing'] },
-      adapterType: { $in: ['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-search', 'dice-mcp'] },
+      adapterType: { $in: ['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-search', 'dice-mcp', 'public-job-feed'] },
     });
     for (const extra of extras) {
       if (known.has(String(extra._id))) continue;

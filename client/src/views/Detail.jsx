@@ -167,6 +167,16 @@ export default function Detail({ id, onBack }) {
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button className="btn" type="button" onClick={openApplication}>Open employer application</button>
+          <button
+            className="btn-quiet"
+            type="button"
+            onClick={() => api('/api/apply-queue', { method: 'POST', body: JSON.stringify({ opportunityId: id }) })
+              .then(() => setActionError(''))
+              .then(() => setPayload({ ...payload, notice: 'Added to the apply queue. Open Apply queue to go through the postings one at a time. This app does not submit the form.' }))
+              .catch((err) => setActionError(err.message))}
+          >
+            Add to apply queue
+          </button>
           {payload.application && payload.application.status !== 'submitted_by_me' && (
             <button className="btn-quiet" type="button" onClick={markSubmitted}>I submitted this on the employer site</button>
           )}
@@ -175,6 +185,9 @@ export default function Detail({ id, onBack }) {
           <p className="mt-2 text-sm text-slate-700">
             {payload.application.status === 'submitted_by_me' ? 'You marked this as submitted by you.' : 'Employer application opened. Nothing was sent from this app.'}
           </p>
+        )}
+        {payload.notice && payload.notice.includes('apply queue') && (
+          <p className="mt-2 text-sm text-slate-700">{payload.notice}</p>
         )}
       </section>
 

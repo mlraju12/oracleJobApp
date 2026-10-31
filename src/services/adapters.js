@@ -75,6 +75,20 @@ const ADAPTERS = [
     ],
   },
   {
+    id: 'public-job-feed',
+    label: 'Public remote job feed',
+    verified: true,
+    documentationUrl: 'https://github.com/Himalayas-App/remote-jobs-api',
+    accessMethod: 'public_api',
+    summary: 'Public JSON job feeds that publish a job list without an API key. Himalayas search and the Jobicy remote-jobs feed are the boards this adapter reads. The official job URL is stored. This app does not submit the application.',
+    limitations: [
+      'Checked on 2026-10-31. Himalayas documents GET https://himalayas.app/jobs/api/search with page, and the response says search results come 20 to a page. A short refresh that has not reached totalCount stays partial and does not close listings.',
+      'Jobicy documents GET https://jobicy.com/api/v2/remote-jobs. The feed asks to credit Jobicy and to send the candidate to the job URL in the response. hasMore true is an incomplete read.',
+      'Remotive search and The Muse public jobs API were checked the same day and not enabled. Remotive’s Oracle search did not return Oracle text. The Muse jobs endpoint pages a general board and does not document a keyword search.',
+      'Salary is stored only when the feed includes a minimum or maximum. A pay period word without an amount is not a salary.',
+    ],
+  },
+  {
     id: 'public-structured',
     label: 'Public page JobPosting data',
     verified: true,
@@ -865,6 +879,10 @@ async function collectSource(source, deps) {
   if (source.adapterType === 'ashby-job-board') return collectAshby(source, deps);
   if (source.adapterType === 'smartrecruiters-postings') return collectSmartRecruiters(source, deps);
   if (source.adapterType === 'public-structured') return collectStructuredPage(source, deps);
+  if (source.adapterType === 'public-job-feed') {
+    const { collectPublicJobFeed } = require('./publicJobs');
+    return collectPublicJobFeed(source, deps);
+  }
   if (source.adapterType === 'public-search') {
     const { collectPublicSearch } = require('./publicSearch');
     return collectPublicSearch(source, deps);

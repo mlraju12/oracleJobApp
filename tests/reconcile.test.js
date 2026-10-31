@@ -1,4 +1,5 @@
 const { reconcileListings, matchesDerived, relationshipOf, scheduleOf } = require('../src/services/reconcile');
+const { extractExperience } = require('../src/services/extract');
 
 function listing(overrides) {
   return {
@@ -81,5 +82,26 @@ describe('count reconciliation', () => {
     });
     expect(matchesDerived(remoteIndia, { scope: 'usa' })).toBe(false);
     expect(matchesDerived(remoteIndia, { scope: 'other' })).toBe(true);
+  });
+
+  test('filters on stated years and does not treat a seniority word as a year count', () => {
+    const fivePlus = listing({ experience: { status: 'published', yearsText: '5+ years', yearsMin: 5, yearsMax: null, seniority: 'senior' } });
+    const threeToFive = listing({ experience: { status: 'published', yearsText: '3-5 years' } });
+    const seniorOnly = listing({ experience: { status: 'published', yearsText: null, seniority: 'senior' } });
+    const unstated = listing({});
+    expect(matchesDerived(fivePlus, { experienceMin: '5' })).toBe(true);
+    expect(matchesDerived(fivePlus, { experienceMax: '3' })).toBe(false);
+    expect(matchesDerived(threeToFive, { experienceMin: '4', experienceMax: '6' })).toBe(true);
+    expect(matchesDerived(threeToFive, { experienceMin: '8' })).toBe(false);
+    expect(matchesDerived(seniorOnly, { experienceMin: '1' })).toBe(false);
+    expect(matchesDerived(unstated, { experienceMax: '10' })).toBe(false);
+    expect(matchesDerived(fivePlus, {})).toBe(true);
+    const parsed = extractExperience('Senior Analyst', 'At least 8 years of Oracle Cloud HCM. Candidates must be 25 years old.');
+    expect(parsed.yearsMin).toBe(8);
+    expect(parsed.yearsMax).toBe(null);
+    expect(parsed.yearsText).toMatch(/8 years/i);
+    const range = extractExperience('Analyst', '3 to 5 years of experience.');
+    expect(range.yearsMin).toBe(3);
+    expect(range.yearsMax).toBe(5);
   });
 });

@@ -1,4 +1,5 @@
 const { withinUsaScope } = require('./scope');
+const { yearsBounds } = require('./extract');
 
 const OTHER_PRODUCTS = new Set(['ebs_only', 'peoplesoft_only', 'ebs_and_peoplesoft']);
 
@@ -130,6 +131,37 @@ function withinDate(value, after, before) {
   return true;
 }
 
+function yearBound(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0 || number > 60) return null;
+  return number;
+}
+
+function statedYears(item) {
+  const experience = (item && item.experience) || {};
+  if (Number.isInteger(experience.yearsMin)) {
+    return {
+      min: experience.yearsMin,
+      max: Number.isInteger(experience.yearsMax) ? experience.yearsMax : null,
+    };
+  }
+  const parsed = yearsBounds(experience.yearsText || '');
+  return parsed ? { min: parsed.yearsMin, max: parsed.yearsMax } : null;
+}
+
+function withinYears(item, rawMin, rawMax) {
+  const min = yearBound(rawMin);
+  const max = yearBound(rawMax);
+  if (min == null && max == null) return true;
+  const stated = statedYears(item);
+  if (!stated) return false;
+  const statedMax = stated.max == null ? Infinity : stated.max;
+  const userMin = min == null ? 0 : min;
+  const userMax = max == null ? Infinity : max;
+  return stated.min <= userMax && statedMax >= userMin;
+}
+
 function matchesDerived(item, query) {
   if (query.scope === 'usa' && !withinUsaScope(item)) return false;
   if (query.scope === 'other' && withinUsaScope(item)) return false;
@@ -137,6 +169,7 @@ function matchesDerived(item, query) {
   if (query.schedule && scheduleOf(item) !== query.schedule) return false;
   if (!withinDate(item.publishedAt, query.postedAfter, query.postedBefore)) return false;
   if (!withinDate(item.firstSeenAt, query.discoveredAfter, query.discoveredBefore)) return false;
+  if (!withinYears(item, query.experienceMin, query.experienceMax)) return false;
   return true;
 }
 
@@ -148,7 +181,9 @@ function needsDerivedFilter(query) {
     || !!query.postedAfter
     || !!query.postedBefore
     || !!query.discoveredAfter
-    || !!query.discoveredBefore;
+    || !!query.discoveredBefore
+    || yearBound(query.experienceMin) != null
+    || yearBound(query.experienceMax) != null;
 }
 
 module.exports = {

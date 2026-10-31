@@ -25,6 +25,8 @@ const EMPTY = {
   postedBefore: '',
   discoveredAfter: '',
   discoveredBefore: '',
+  experienceMin: '',
+  experienceMax: '',
   excludeSource: '',
   directEndClient: '',
 };
@@ -36,6 +38,7 @@ export default function Feed({ filters, setFilters, onOpen }) {
   const [loading, setLoading] = useState(false);
   const [searchName, setSearchName] = useState('');
   const [draft, setDraft] = useState(filters);
+  const [queuedIds, setQueuedIds] = useState({});
 
   useEffect(() => {
     setDraft(filters);
@@ -129,6 +132,7 @@ export default function Feed({ filters, setFilters, onOpen }) {
           {filters.scope === 'usa' && <p className="text-sm text-slate-600">United States scope is on. A remote job stays when its geographic eligibility is unknown. A named non-US place is left out.</p>}
           {filters.scope === 'other' && <p className="text-sm text-slate-600">Other countries shows listings that state a non-US place or remote restriction.</p>}
           {filters.directEndClient === 'true' && <p className="text-sm text-slate-600">Direct end-client keeps listings where the employer is an end user hiring its own team.</p>}
+          {(filters.experienceMin || filters.experienceMax) && <p className="text-sm text-slate-600">Experience years keeps listings whose posting states a year count in this range. A seniority word such as Senior is not a year count. Listings that do not state years are left out.</p>}
           {collection && collection.refreshing && <p className="text-sm text-cyan-700">Reading public career boards and their published requirements.</p>}
         </div>
         <div className="flex gap-2">
@@ -165,6 +169,12 @@ export default function Feed({ filters, setFilters, onOpen }) {
         </label>
         <label className="text-sm">Location
           <input className="field" value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} />
+        </label>
+        <label className="text-sm">Experience from
+          <input className="field" type="number" min="0" max="60" inputMode="numeric" placeholder="Years stated" value={draft.experienceMin || ''} onChange={(event) => setDraft({ ...draft, experienceMin: event.target.value })} />
+        </label>
+        <label className="text-sm">Experience through
+          <input className="field" type="number" min="0" max="60" inputMode="numeric" placeholder="Years stated" value={draft.experienceMax || ''} onChange={(event) => setDraft({ ...draft, experienceMax: event.target.value })} />
         </label>
         <label className="text-sm">Posted from
           <input className="field" type="date" value={draft.postedAfter || ''} onChange={(event) => setDraft({ ...draft, postedAfter: event.target.value })} />
@@ -293,6 +303,17 @@ export default function Feed({ filters, setFilters, onOpen }) {
                       <a className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-800" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
                         Open original posting <ExternalLink size={12} />
                       </a>
+                    )}
+                    {opportunity.canonicalUrl && (
+                      <button
+                        className="text-xs font-semibold text-cyan-800"
+                        type="button"
+                        onClick={() => api('/api/apply-queue', { method: 'POST', body: JSON.stringify({ opportunityId: opportunity.id }) })
+                          .then(() => setQueuedIds((current) => ({ ...current, [opportunity.id]: true })))
+                          .catch((err) => setError(err.message))}
+                      >
+                        {queuedIds[opportunity.id] ? 'In apply queue' : 'Add to apply queue'}
+                      </button>
                     )}
                     {opportunity.isNew && <span className="text-xs text-cyan-800">New</span>}
                   </div>

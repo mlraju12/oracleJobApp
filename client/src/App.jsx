@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bookmark, Briefcase, Building2, Activity, ShieldAlert, LogOut, FileUp } from 'lucide-react';
+import { Bookmark, Briefcase, Building2, Activity, ShieldAlert, LogOut, FileUp, ListChecks } from 'lucide-react';
 import { api } from './api';
 import Feed from './views/Feed';
 import Detail from './views/Detail';
@@ -8,6 +8,7 @@ import Health from './views/Health';
 import Saved from './views/Saved';
 import Review from './views/Review';
 import Resume from './views/Resume';
+import ApplyQueue from './views/ApplyQueue';
 
 const NAV = [
   ['feed', 'Opportunities', Briefcase],
@@ -16,6 +17,7 @@ const NAV = [
   ['health', 'Collection', Activity],
   ['review', 'Review', ShieldAlert],
   ['resume', 'Resume', FileUp],
+  ['queue', 'Apply queue', ListChecks],
 ];
 
 export default function App() {
@@ -44,6 +46,8 @@ export default function App() {
     postedBefore: '',
     discoveredAfter: '',
     discoveredBefore: '',
+    experienceMin: '',
+    experienceMax: '',
     excludeSource: '',
     directEndClient: '',
   });
@@ -73,7 +77,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-200">
-      <header className="border-b border-slate-200 bg-white">
+      <header className="border-b border-slate-400 bg-slate-300">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">SLP Microsystems</p>
@@ -93,7 +97,7 @@ export default function App() {
           {NAV.map(([id, label, Icon]) => (
             <button
               key={id}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${view === id || (view === 'detail' && id === 'feed') ? 'bg-cyan-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${view === id || (view === 'detail' && id === 'feed') ? 'bg-cyan-700 text-white' : 'text-slate-700 hover:bg-slate-200'}`}
               onClick={() => setView(id)}
             >
               <Icon size={16} /> {label}
@@ -110,6 +114,7 @@ export default function App() {
         {view === 'health' && <Health />}
         {view === 'review' && <Review onOpen={openOpportunity} />}
         {view === 'resume' && <Resume />}
+        {view === 'queue' && <ApplyQueue />}
       </main>
     </div>
   );
