@@ -267,7 +267,6 @@ export default function Sources() {
                 <h3 className="font-semibold">{source.name}</h3>
                 <p className="text-sm text-slate-600">{source.domain} · {source.ownership.replaceAll('_', ' ')} · {source.status}{source.catalogKey ? ' · collected automatically' : ''}</p>
               </div>
-              {source.synthetic && <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-900">Demo data</span>}
             </div>
             <p className="mt-2 text-sm text-slate-700">{source.adapterSummary}</p>
             <p className="mt-1 text-xs text-slate-500">
@@ -277,7 +276,7 @@ export default function Sources() {
               Closure: {source.closurePolicy === 'never_auto_close' ? 'never close from a scan' : 'close only after a complete scan leaves the job out'}.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {source.status !== 'enabled' && !source.synthetic && <button className="btn" onClick={() => setStatus(source, 'enabled')}>Enable</button>}
+              {source.status !== 'enabled' && <button className="btn" onClick={() => setStatus(source, 'enabled')}>Enable</button>}
               {source.status === 'enabled' && <button className="btn-quiet" onClick={() => setStatus(source, 'paused')}>Pause</button>}
               {['enabled', 'failing'].includes(source.status) && <button className="btn-quiet" onClick={() => refresh(source.id)}>Refresh now</button>}
             </div>

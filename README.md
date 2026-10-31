@@ -76,7 +76,6 @@ npm run verify:sources
 - Search, filter, open the original posting, and read a “why this matches” explanation.
 - Save searches, save listings, and track a personal status.
 - Collection runs, failure history, and a review queue.
-- Labeled synthetic demo data from **Load labeled demo data**.
 
 A listing is marked removed only when a **complete** source snapshot no longer contains it. A failed or partial refresh leaves existing listings active and shows presence as unverified.
 

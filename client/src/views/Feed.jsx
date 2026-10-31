@@ -12,7 +12,6 @@ const EMPTY = {
   platform: 'oracle_cloud_hcm,mixed',
   listingStatus: 'active',
   location: '',
-  synthetic: 'false',
   big5: '',
   hiringContext: '',
   scope: '',
@@ -107,16 +106,6 @@ export default function Feed({ filters, setFilters, onOpen }) {
     }
   }
 
-  async function loadDemo() {
-    setError('');
-    try {
-      await api('/api/demo/load', { method: 'POST', body: '{}' });
-      setFilters({ ...filters });
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
   async function saveSearch() {
     if (!searchName.trim()) return;
     await api('/api/saved-searches', { method: 'POST', body: JSON.stringify({ name: searchName, filters: draft }) });
@@ -128,7 +117,7 @@ export default function Feed({ filters, setFilters, onOpen }) {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-4xl text-ink">Opportunities</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#5c564e]">{data.coverage ? data.coverage.label : 'Listings found across monitored sources'}: {data.total} in this view. This is not the whole Oracle HCM job market. Demo listings stay hidden.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#5c564e]">{data.coverage ? data.coverage.label : 'Listings found across monitored sources'}: {data.total} in this view. This is not the whole Oracle HCM job market.</p>
           {filters.scope === 'usa' && <p className="text-sm text-slate-600">United States scope is on. A remote job stays when its geographic eligibility is unknown. A named non-US place is left out.</p>}
           {filters.scope === 'other' && <p className="text-sm text-slate-600">Other countries shows listings that state a non-US place or remote restriction.</p>}
           {filters.directEndClient === 'true' && <p className="text-sm text-slate-600">Direct end-client keeps listings where the employer is an end user hiring its own team.</p>}
@@ -137,7 +126,6 @@ export default function Feed({ filters, setFilters, onOpen }) {
         </div>
         <div className="flex gap-2">
           <button className="btn" type="button" onClick={refreshPublic}>Refresh public boards</button>
-          <button className="btn-quiet" type="button" onClick={loadDemo}>Load labeled demo data</button>
         </div>
       </div>
       <form className="panel grid gap-3 p-5 md:grid-cols-4" onSubmit={runSearch}>
@@ -217,13 +205,6 @@ export default function Feed({ filters, setFilters, onOpen }) {
           <select className="field" value={draft.big5 || ''} onChange={(event) => setDraft({ ...draft, big5: event.target.value })}>
             <option value="">All collected employers</option>
             <option value="true">Deloitte, PwC, EY, KPMG, Accenture</option>
-          </select>
-        </label>
-        <label className="text-sm">Demo data
-          <select className="field" value={draft.synthetic} onChange={(event) => setDraft({ ...draft, synthetic: event.target.value })}>
-            <option value="">Include demo data</option>
-            <option value="false">Hide demo data</option>
-            <option value="true">Demo data only</option>
           </select>
         </label>
         <fieldset className="md:col-span-4">
@@ -338,6 +319,21 @@ export default function Feed({ filters, setFilters, onOpen }) {
                     .catch((err) => setError(err.message))}
                 >
                   {queuedIds[opportunity.id] ? 'In apply queue' : 'Add to apply queue'}
+                </button>
+              )}
+              {opportunity.publishedEmails && opportunity.publishedEmails.length > 0 && (
+                <button
+                  className="btn-quiet"
+                  type="button"
+                  onClick={() => api(`/api/opportunities/${opportunity.id}/email-draft`, { method: 'POST', body: '{}' })
+                    .then((body) => {
+                      const link = document.createElement('a');
+                      link.href = body.mailto;
+                      link.click();
+                    })
+                    .catch((err) => setError(err.message))}
+                >
+                  Open email draft
                 </button>
               )}
             </div>

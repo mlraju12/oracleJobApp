@@ -461,4 +461,5 @@ module.exports = {
   schemaEmployment,
   buildListingRecord,
   unknownCompensation,
+  publishedEmails: require('./outreach').publishedEmails,
 };

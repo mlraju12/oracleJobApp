@@ -22,6 +22,7 @@ const {
   SavedOpportunity,
   Application,
   ApplyQueueItem,
+  EmailOutreach,
 } = require('./models');
 const { employerKey, escapeRegex } = require('./services/text');
 const { assertSafeOutboundUrl } = require('./services/outbound');
@@ -31,7 +32,7 @@ const { reconcileListings, matchesDerived, needsDerivedFilter, relationshipOf, s
 const { EMPLOYER_TYPES, HIRING_RELATIONSHIPS } = require('./services/employerClass');
 const { startCatalogRefresh, catalogRefreshRunning } = require('./services/catalog');
 const { discoveryReport, importEmployer, searchProviderStatus } = require('./services/discovery');
-const { loadDemo, SYNTHETIC_LABEL } = require('./demo');
+const { publishedEmails, emailDraft } = require('./services/outreach');
 const { createStorage, encryptSecret, decryptSecret } = require('./services/platform');
 const { createBullQueue, redisUrl } = require('./services/queue');
 
@@ -201,6 +202,7 @@ function presentOpportunity(opportunity, saved, extras = {}) {
     extractionConfidence: opportunity.extractionConfidence,
     personalStatus: saved ? saved.personalStatus : null,
     personalNotes: saved ? saved.notes || '' : '',
+    publishedEmails: publishedEmails(opportunity.descriptionText),
   };
 }
 
@@ -222,7 +224,6 @@ function cleanConfig(input) {
 function resolvedStatus(payload) {
   const adapterType = payload.adapterType;
   let status = payload.status || 'paused';
-  if (adapterType === 'fixture') return 'paused';
   if (!adapterById(adapterType) || adapterType === 'unsupported') return 'unsupported';
   if (status === 'enabled') {
     if (['blocked', 'rejected'].includes(payload.termsReviewStatus)) {
@@ -262,6 +263,8 @@ async function createApp(options = {}) {
   const mongoUri = options.mongoUri || process.env.MONGODB_URI;
   if (!mongoUri) throw new Error('MONGODB_URI is required.');
   if (mongoose.connection.readyState === 0) await mongoose.connect(mongoUri);
+  await Opportunity.deleteMany({ synthetic: true });
+  await EmployerSource.deleteMany({ synthetic: true });
 
   const app = express();
   const storage = options.storage || createStorage({ driver: options.storageDriver, env: process.env });
@@ -498,7 +501,7 @@ async function createApp(options = {}) {
         opportunityId: { $in: items.map((item) => item._id) },
       });
       const savedById = new Map(saved.map((item) => [String(item.opportunityId), item]));
-      const sourceRows = await EmployerSource.find({ tenantId: req.auth.tenantId }).select('name adapterType status');
+      const sourceRows = await EmployerSource.find({ tenantId: req.auth.tenantId, synthetic: { $ne: true } }).select('name adapterType status');
       const sourceById = new Map(sourceRows.map((source) => [String(source._id), source]));
       const started = await kickCatalog(req.auth.tenantId, false);
       const coverage = await coverageSummary(req.auth.tenantId);
@@ -571,6 +574,11 @@ async function createApp(options = {}) {
         opportunityId: opportunity._id,
       });
       const user = await User.findOne({ _id: req.auth.userId, tenantId: req.auth.tenantId });
+      const outreach = await EmailOutreach.find({
+        tenantId: req.auth.tenantId,
+        userId: req.auth.userId,
+        opportunityId: opportunity._id,
+      });
       res.json({
         opportunity: presentOpportunity(opportunity, saved, {
           sourceName: source ? source.name : '',
@@ -579,6 +587,10 @@ async function createApp(options = {}) {
         source: source ? presentSource(source) : null,
         application: application ? presentApplication(application) : null,
         resume: presentResume(user && user.resume),
+        emailOutreach: outreach.map((item) => ({
+          email: item.email,
+          sentAt: item.sentAt || null,
+        })),
       });
     } catch (error) {
       next(error);
@@ -815,6 +827,73 @@ async function createApp(options = {}) {
     }
   });
 
+  async function draftForAccount(auth, opportunityId) {
+    const user = await User.findOne({ _id: auth.userId, tenantId: auth.tenantId });
+    if (!user || !user.resume || !user.resume.storageKey) {
+      const error = new Error('Upload a resume before preparing an email.');
+      error.status = 400;
+      throw error;
+    }
+    const opportunity = await Opportunity.findOne({ _id: opportunityId, tenantId: auth.tenantId, synthetic: false });
+    if (!opportunity) {
+      const error = new Error('Opportunity not found.');
+      error.status = 404;
+      throw error;
+    }
+    const draft = emailDraft(opportunity, user.resume.fileName);
+    if (!draft) {
+      const error = new Error('This posting does not publish an email address.');
+      error.status = 404;
+      throw error;
+    }
+    const existing = await EmailOutreach.findOne({
+      tenantId: auth.tenantId,
+      userId: auth.userId,
+      opportunityId: opportunity._id,
+      email: draft.email,
+    });
+    return { user, opportunity, draft, existing };
+  }
+
+  app.post('/api/opportunities/:id/email-draft', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const { draft, existing } = await draftForAccount(req.auth, req.params.id);
+      res.json({
+        ...draft,
+        alreadySent: !!existing,
+        note: existing
+          ? 'You already recorded an email to this address. Opening the draft again does not send another message.'
+          : draft.note,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/opportunities/:id/email-sent', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const { user, opportunity, draft, existing } = await draftForAccount(req.auth, req.params.id);
+      if (existing) {
+        return res.status(409).json({ error: 'You already recorded an email to this address.' });
+      }
+      const saved = await EmailOutreach.create({
+        tenantId: req.auth.tenantId,
+        userId: req.auth.userId,
+        opportunityId: opportunity._id,
+        email: draft.email,
+        resumeFileName: user.resume.fileName,
+        sentAt: new Date(),
+      });
+      res.status(201).json({
+        email: saved.email,
+        sentAt: saved.sentAt,
+        note: 'You marked this email as sent by you. Nothing was sent from this app.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post('/api/opportunities/:id/apply/submitted', requireUser, requireWriter, async (req, res, next) => {
     try {
       const application = await Application.findOne({
@@ -929,7 +1008,7 @@ async function createApp(options = {}) {
 
   app.get('/api/sources', requireUser, async (req, res, next) => {
     try {
-      const sources = await EmployerSource.find({ tenantId: req.auth.tenantId }).sort({ name: 1 });
+      const sources = await EmployerSource.find({ tenantId: req.auth.tenantId, synthetic: { $ne: true } }).sort({ name: 1 });
       res.json({ sources: sources.map(presentSource) });
     } catch (error) {
       next(error);
@@ -1094,7 +1173,7 @@ async function createApp(options = {}) {
 
   app.get('/api/collection/health', requireUser, async (req, res, next) => {
     try {
-      const sources = await EmployerSource.find({ tenantId: req.auth.tenantId });
+      const sources = await EmployerSource.find({ tenantId: req.auth.tenantId, synthetic: { $ne: true } });
       const counts = { enabled: 0, paused: 0, unsupported: 0, failing: 0 };
       for (const source of sources) counts[source.status] = (counts[source.status] || 0) + 1;
       const latest = await CollectionRun.find({ tenantId: req.auth.tenantId }).sort({ startedAt: -1 }).limit(8);
@@ -1111,15 +1190,6 @@ async function createApp(options = {}) {
         'reviewFlags.0': { $exists: true },
       }).sort({ updatedAt: -1 }).limit(100);
       res.json({ opportunities: items.map((item) => presentOpportunity(item)) });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.post('/api/demo/load', requireUser, requireWriter, async (req, res, next) => {
-    try {
-      const result = await loadDemo(req.auth.tenantId, storage);
-      res.json({ created: result.created, total: result.total, sourceId: String(result.source._id), label: SYNTHETIC_LABEL });
     } catch (error) {
       next(error);
     }
@@ -1205,7 +1275,6 @@ function sanitizeFilters(filters) {
     platform: String(source.platform || ''),
     listingStatus: String(source.listingStatus || ''),
     location: String(source.location || '').slice(0, 80),
-    synthetic: String(source.synthetic || ''),
     scope: String(source.scope || ''),
     engagement: String(source.engagement || ''),
     employerType: String(source.employerType || ''),
@@ -1267,8 +1336,7 @@ function opportunityFilter(tenantId, query) {
     if (EMPLOYER_TYPES.includes(query.employerType)) filter.employerType = query.employerType;
     if (HIRING_RELATIONSHIPS.includes(query.hiringRelationship)) filter.hiringRelationship = query.hiringRelationship;
   }
-  if (query.synthetic === 'true') filter.synthetic = true;
-  if (query.synthetic === 'false') filter.synthetic = false;
+  filter.synthetic = false;
   if (query.location) filter['locations.label'] = new RegExp(escapeRegex(query.location), 'i');
   const excludedSources = String(query.excludeSource || '').split(',').map((item) => item.trim()).filter((id) => /^[a-f0-9]{24}$/i.test(id));
   if (excludedSources.length) filter.sourceId = { $nin: excludedSources };

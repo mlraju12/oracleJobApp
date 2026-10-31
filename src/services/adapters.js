@@ -125,15 +125,6 @@ const ADAPTERS = [
       'Pages behind login or CAPTCHA are not collected.',
     ],
   },
-  {
-    id: 'fixture',
-    label: 'Synthetic fixture',
-    verified: false,
-    documentationUrl: null,
-    accessMethod: 'manual',
-    summary: 'Labeled demo data. It is not a live employer feed.',
-    limitations: ['Cannot be enabled for collection.'],
-  },
 ];
 
 function adapterById(id) {

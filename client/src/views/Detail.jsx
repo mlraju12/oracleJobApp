@@ -9,6 +9,8 @@ export default function Detail({ id, onBack }) {
   const [actionError, setActionError] = useState('');
   const [personalStatus, setPersonalStatus] = useState('saved');
   const [notes, setNotes] = useState('');
+  const [emailNote, setEmailNote] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -17,6 +19,8 @@ export default function Detail({ id, onBack }) {
         setPayload(body);
         setPersonalStatus(body.opportunity.personalStatus || 'saved');
         setNotes(body.opportunity.personalNotes || '');
+        setEmailSent(Array.isArray(body.emailOutreach) && body.emailOutreach.length > 0);
+        setEmailNote('');
       })
       .catch((err) => setError(err.message));
   }, [id]);
@@ -34,6 +38,30 @@ export default function Detail({ id, onBack }) {
       setActionError('');
       setPayload({ ...payload, application: body.application, notice: body.note });
       window.open(body.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setActionError(err.message);
+    }
+  }
+
+  async function openEmailDraft() {
+    try {
+      const body = await api(`/api/opportunities/${id}/email-draft`, { method: 'POST', body: '{}' });
+      setActionError('');
+      setEmailNote(body.note);
+      const link = document.createElement('a');
+      link.href = body.mailto;
+      link.click();
+    } catch (err) {
+      setActionError(err.message);
+    }
+  }
+
+  async function markEmailed() {
+    try {
+      const body = await api(`/api/opportunities/${id}/email-sent`, { method: 'POST', body: '{}' });
+      setActionError('');
+      setEmailSent(true);
+      setEmailNote(body.note);
     } catch (err) {
       setActionError(err.message);
     }
@@ -70,9 +98,6 @@ export default function Detail({ id, onBack }) {
     <div className="space-y-4">
       <button className="btn-quiet" onClick={onBack}>Back to feed</button>
       {actionError && <p className="text-sm text-amber-800">{actionError}</p>}
-      {opportunity.synthetic && (
-        <p className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">{opportunity.syntheticLabel}</p>
-      )}
       <div className="panel p-5">
         <p className="text-sm text-slate-600">{opportunity.employerName} · {opportunity.sourceOwnership.replaceAll('_', ' ')}{opportunity.hiringContext === 'direct_client' ? ' · Direct client' : ''}{opportunity.hiringContext === 'consulting_firm' ? ' · Consulting firm' : ''}</p>
         <h2 className="mt-1 text-3xl">{opportunity.title}</h2>
@@ -188,6 +213,22 @@ export default function Detail({ id, onBack }) {
         )}
         {payload.notice && payload.notice.includes('apply queue') && (
           <p className="mt-2 text-sm text-slate-700">{payload.notice}</p>
+        )}
+        {opportunity.publishedEmails && opportunity.publishedEmails.length > 0 && (
+          <div className="mt-4 border-t border-line pt-4">
+            <p className="text-sm text-slate-700">
+              This posting publishes {opportunity.publishedEmails.join(', ')}. The address is copied from the posting text.
+              This app does not send the message.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="btn" type="button" onClick={openEmailDraft}>Open email draft</button>
+              {!emailSent && (
+                <button className="btn-quiet" type="button" onClick={markEmailed}>I sent this email</button>
+              )}
+            </div>
+            {emailSent && <p className="mt-2 text-sm text-slate-700">You marked this email as sent by you. Nothing was sent from this app.</p>}
+            {emailNote && <p className="mt-2 text-sm text-slate-700">{emailNote}</p>}
+          </div>
         )}
       </section>
 

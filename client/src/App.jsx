@@ -33,7 +33,6 @@ export default function App() {
     platform: 'oracle_cloud_hcm,mixed',
     listingStatus: 'active',
     location: '',
-    synthetic: 'false',
     big5: '',
     hiringContext: '',
     scope: '',

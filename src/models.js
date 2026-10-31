@@ -294,6 +294,17 @@ const applyQueueSchema = new mongoose.Schema({
 
 applyQueueSchema.index({ tenantId: 1, userId: 1, opportunityId: 1 }, { unique: true });
 
+const emailOutreachSchema = new mongoose.Schema({
+  tenantId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  opportunityId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  email: { type: String, required: true },
+  resumeFileName: String,
+  sentAt: Date,
+}, { timestamps: true });
+
+emailOutreachSchema.index({ tenantId: 1, userId: 1, opportunityId: 1, email: 1 }, { unique: true });
+
 module.exports = {
   Opportunity: mongoose.models.Opportunity || mongoose.model('Opportunity', opportunitySchema),
   EmployerSource: mongoose.models.EmployerSource || mongoose.model('EmployerSource', sourceSchema),
@@ -303,5 +314,6 @@ module.exports = {
   SavedOpportunity: mongoose.models.SavedOpportunity || mongoose.model('SavedOpportunity', savedOpportunitySchema),
   Application: mongoose.models.Application || mongoose.model('Application', applicationSchema),
   ApplyQueueItem: mongoose.models.ApplyQueueItem || mongoose.model('ApplyQueueItem', applyQueueSchema),
+  EmailOutreach: mongoose.models.EmailOutreach || mongoose.model('EmailOutreach', emailOutreachSchema),
   EmployerLead: mongoose.models.EmployerLead || mongoose.model('EmployerLead', leadSchema),
 };

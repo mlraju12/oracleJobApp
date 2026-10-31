@@ -101,7 +101,7 @@ The relevance score is an explanation of where the Oracle Cloud HCM phrase appea
 - Deloitte, EY, and PwC reads are capped. A partial read must not be treated as the full vacancy list.
 - Dice is capped at one page per keyword. Posted dates appear only when Dice or Greenhouse or Lever published one. EY, Deloitte, and PwC pages in this pilot often did not.
 - The United States scope keeps a job when the location is unknown. It removes a job when the text names a non-US place, including remote jobs that state a non-US eligibility rule.
-- Demo listings are hidden in the default feed. They are labeled when someone chooses to load them.
+- The feed shows collected public listings only.
 
 ## Setup and worker
 
@@ -112,7 +112,7 @@ npm test
 npm run dev
 ```
 
-Open http://localhost:3050 and create an account. The default feed is Oracle Cloud HCM and mixed, active listings, United States scope, demo data hidden.
+Open http://localhost:3050 and create an account. The default feed is Oracle Cloud HCM and mixed, active listings, and any geography.
 
 Production web process:
 
