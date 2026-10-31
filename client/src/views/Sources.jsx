@@ -29,6 +29,7 @@ export default function Sources() {
   const [showManual, setShowManual] = useState(false);
   const [discovery, setDiscovery] = useState(null);
   const [employerImport, setEmployerImport] = useState({ name: '', careersUrl: '', evidenceUrl: '', domain: '', geography: '', employerType: 'end_user' });
+  const [logins, setLogins] = useState({});
 
   function load() {
     return Promise.all([api('/api/sources'), api('/api/adapters'), api('/api/discovery')]).then(([sourceBody, adapterBody, discoveryBody]) => {
@@ -78,6 +79,42 @@ export default function Sources() {
         method: 'PATCH',
         body: JSON.stringify({ ...source, status, termsReviewStatus: source.termsReviewStatus }),
       });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function loginValue(source, field) {
+    const draft = logins[source.id] || {};
+    if (field === 'username') return draft.username != null ? draft.username : (source.savedUsername || '');
+    return draft.password || '';
+  }
+
+  function setLogin(source, field, value) {
+    setLogins((current) => ({
+      ...current,
+      [source.id]: {
+        username: field === 'username' ? value : ((current[source.id] && current[source.id].username != null) ? current[source.id].username : (source.savedUsername || '')),
+        password: field === 'password' ? value : (current[source.id] && current[source.id].password) || '',
+      },
+    }));
+  }
+
+  async function saveLogin(event, source) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    try {
+      const body = await api(`/api/sources/${source.id}/credentials`, {
+        method: 'POST',
+        body: JSON.stringify({
+          username: loginValue(source, 'username'),
+          password: loginValue(source, 'password'),
+        }),
+      });
+      setLogins((current) => ({ ...current, [source.id]: { username: body.source.savedUsername || '', password: '' } }));
+      setMessage(`${source.name}: ${body.loginMessage}`);
       await load();
     } catch (err) {
       setError(err.message);
@@ -258,6 +295,24 @@ export default function Sources() {
       </form>
       </div>
       )}
+
+      <section className="panel space-y-4 p-4">
+        <h2 className="text-3xl">Contract site sign-in</h2>
+        <p className="text-sm text-slate-700">Enter the username and password for each contract site you can open. This app submits them only to that site. The password stays encrypted in this account and is not shown again.</p>
+        {sources.filter((source) => source.asksForLogin).map((source) => (
+          <form key={source.id} className="grid gap-3 border-t border-line pt-4 md:grid-cols-2" onSubmit={(event) => saveLogin(event, source)}>
+            <h3 className="font-semibold md:col-span-2">{source.name}</h3>
+            <label className="text-sm">Username
+              <input className="field" autoComplete="username" value={loginValue(source, 'username')} onChange={(event) => setLogin(source, 'username', event.target.value)} />
+            </label>
+            <label className="text-sm">Password
+              <input className="field" type="password" autoComplete="current-password" value={loginValue(source, 'password')} onChange={(event) => setLogin(source, 'password', event.target.value)} />
+            </label>
+            {source.loginMessage && <p className="text-sm text-slate-600 md:col-span-2">{source.loginMessage}</p>}
+            <button className="btn md:col-span-2" type="submit">Save and sign in</button>
+          </form>
+        ))}
+      </section>
 
       <div className="space-y-3">
         {sources.map((source) => (

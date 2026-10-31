@@ -112,5 +112,6 @@ describe('public career parsers', () => {
 
   test('refuses an unsupported Big 5 provider', async () => {
     await expect(collectPublicSearch({ adapterConfig: { provider: 'kpmg' } }, {})).rejects.toThrow(/no documented public job feed/);
+    await expect(collectPublicSearch({ adapterConfig: { provider: 'pwc-talent-exchange' } }, {})).rejects.toThrow(/no documented public job feed/);
   });
 });

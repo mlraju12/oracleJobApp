@@ -23,6 +23,7 @@ const {
   Application,
   ApplyQueueItem,
   EmailOutreach,
+  MemberCredential,
 } = require('./models');
 const { employerKey, escapeRegex } = require('./services/text');
 const { assertSafeOutboundUrl } = require('./services/outbound');
@@ -33,6 +34,7 @@ const { EMPLOYER_TYPES, HIRING_RELATIONSHIPS } = require('./services/employerCla
 const { startCatalogRefresh, catalogRefreshRunning } = require('./services/catalog');
 const { discoveryReport, importEmployer, searchProviderStatus } = require('./services/discovery');
 const { publishedEmails, emailDraft } = require('./services/outreach');
+const { memberSite, attemptMemberLogin } = require('./services/memberLogin');
 const { createStorage, encryptSecret, decryptSecret } = require('./services/platform');
 const { createBullQueue, redisUrl } = require('./services/queue');
 
@@ -100,7 +102,7 @@ function resumeFileName(header, contentType) {
   return name;
 }
 
-function presentSource(source) {
+function presentSource(source, credential) {
   const adapter = adapterById(source.adapterType);
   return {
     id: String(source._id),
@@ -137,6 +139,10 @@ function presentSource(source) {
     synthetic: !!source.synthetic,
     syntheticLabel: source.syntheticLabel || '',
     catalogKey: source.catalogKey || null,
+    asksForLogin: !!memberSite(source.catalogKey),
+    savedUsername: credential && credential.username || null,
+    loginStatus: credential && credential.lastLoginStatus || 'never',
+    loginMessage: credential && credential.lastLoginMessage || '',
   };
 }
 
@@ -1009,7 +1015,9 @@ async function createApp(options = {}) {
   app.get('/api/sources', requireUser, async (req, res, next) => {
     try {
       const sources = await EmployerSource.find({ tenantId: req.auth.tenantId, synthetic: { $ne: true } }).sort({ name: 1 });
-      res.json({ sources: sources.map(presentSource) });
+      const credentials = await MemberCredential.find({ tenantId: req.auth.tenantId, userId: req.auth.userId });
+      const bySource = new Map(credentials.map((credential) => [String(credential.sourceId), credential]));
+      res.json({ sources: sources.map((source) => presentSource(source, bySource.get(String(source._id)))) });
     } catch (error) {
       next(error);
     }
@@ -1048,6 +1056,50 @@ async function createApp(options = {}) {
       if (!autoCollect) return res.json({ started: false });
       const started = await kickCatalog(req.auth.tenantId, true);
       res.status(202).json({ started, refreshing: started || catalogRefreshRunning(req.auth.tenantId) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/sources/:id/credentials', requireUser, requireWriter, async (req, res, next) => {
+    try {
+      const source = await EmployerSource.findOne({ _id: req.params.id, tenantId: req.auth.tenantId });
+      if (!source) return res.status(404).json({ error: 'Source not found.' });
+      const site = memberSite(source.catalogKey);
+      if (!site) return res.status(400).json({ error: 'This source does not take a contract-site sign-in.' });
+      const username = String(req.body.username || '').trim();
+      const password = String(req.body.password || '');
+      if (username.length < 1 || username.length > 120) return res.status(400).json({ error: 'Enter the username for this site.' });
+      if (password.length < 1 || password.length > 200) return res.status(400).json({ error: 'Enter the password for this site.' });
+      let loginUrl;
+      try {
+        loginUrl = assertSafeOutboundUrl(source.careerSiteUrl).toString();
+      } catch {
+        return res.status(400).json({ error: 'This source has no sign-in page.' });
+      }
+      if (new URL(loginUrl).host !== site.host) return res.status(400).json({ error: 'This source has no sign-in page.' });
+      let result = { status: 'unavailable', message: 'Sign-in was saved. The site did not return a sign-in form.' };
+      try {
+        result = await attemptMemberLogin({ loginUrl, username, password, fetchImpl: options.fetchImpl });
+      } catch {
+        result = { status: 'unavailable', message: 'Sign-in was saved. The site did not accept an automated sign-in.' };
+      }
+      const saved = await MemberCredential.findOneAndUpdate(
+        { tenantId: req.auth.tenantId, userId: req.auth.userId, sourceId: source._id },
+        {
+          tenantId: req.auth.tenantId,
+          userId: req.auth.userId,
+          sourceId: source._id,
+          catalogKey: source.catalogKey,
+          username,
+          passwordEncrypted: encryptSecret(password, secret),
+          lastLoginStatus: result.status,
+          lastLoginMessage: result.message,
+          lastLoginAt: new Date(),
+        },
+        { upsert: true, new: true }
+      );
+      res.json({ source: presentSource(source, saved), loginStatus: result.status, loginMessage: result.message });
     } catch (error) {
       next(error);
     }

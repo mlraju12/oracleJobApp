@@ -305,6 +305,20 @@ const emailOutreachSchema = new mongoose.Schema({
 
 emailOutreachSchema.index({ tenantId: 1, userId: 1, opportunityId: 1, email: 1 }, { unique: true });
 
+const memberCredentialSchema = new mongoose.Schema({
+  tenantId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  sourceId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  catalogKey: { type: String, required: true },
+  username: { type: String, required: true },
+  passwordEncrypted: { type: String, required: true },
+  lastLoginStatus: { type: String, enum: ['never', 'signed_in', 'rejected', 'unavailable'], default: 'never' },
+  lastLoginMessage: { type: String, default: '' },
+  lastLoginAt: Date,
+}, { timestamps: true });
+
+memberCredentialSchema.index({ tenantId: 1, userId: 1, sourceId: 1 }, { unique: true });
+
 module.exports = {
   Opportunity: mongoose.models.Opportunity || mongoose.model('Opportunity', opportunitySchema),
   EmployerSource: mongoose.models.EmployerSource || mongoose.model('EmployerSource', sourceSchema),
@@ -315,5 +329,6 @@ module.exports = {
   Application: mongoose.models.Application || mongoose.model('Application', applicationSchema),
   ApplyQueueItem: mongoose.models.ApplyQueueItem || mongoose.model('ApplyQueueItem', applyQueueSchema),
   EmailOutreach: mongoose.models.EmailOutreach || mongoose.model('EmailOutreach', emailOutreachSchema),
+  MemberCredential: mongoose.models.MemberCredential || mongoose.model('MemberCredential', memberCredentialSchema),
   EmployerLead: mongoose.models.EmployerLead || mongoose.model('EmployerLead', leadSchema),
 };
