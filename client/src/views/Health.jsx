@@ -16,14 +16,14 @@ export default function Health() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Collection health</h2>
+        <h2 className="text-4xl">Collection health</h2>
         <p className="text-sm text-slate-600">A failed or partial refresh does not mark listings removed. Removal happens only after a complete snapshot leaves a job out.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-4">
         {Object.entries(health.counts).map(([status, count]) => (
           <div key={status} className="panel p-4">
             <p className="text-xs uppercase text-slate-500">{status}</p>
-            <p className="text-2xl font-semibold">{count}</p>
+            <p className="font-display text-3xl">{count}</p>
           </div>
         ))}
       </div>

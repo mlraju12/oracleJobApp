@@ -125,16 +125,16 @@ export default function Sources() {
       </div>
       {discovery && (
         <section className="panel space-y-3 p-4 text-sm">
-          <h2 className="text-lg font-semibold">Employer discovery</h2>
+          <h2 className="text-3xl">Employer discovery</h2>
           <p className="text-slate-700">{discovery.search && discovery.search.message}</p>
           <p className="text-slate-600">{discovery.batchNote}</p>
           <div className="grid gap-2 md:grid-cols-3">
-            <p className="rounded-lg border border-slate-200 bg-white p-3">Candidate end-user employers: {discovery.funnel.candidateEmployers}</p>
-            <p className="rounded-lg border border-slate-200 bg-white p-3">Verified career boards: {discovery.funnel.verifiedCareerBoards}</p>
-            <p className="rounded-lg border border-slate-200 bg-white p-3">Supported end-user boards: {discovery.funnel.supportedBoards}</p>
-            <p className="rounded-lg border border-slate-200 bg-white p-3">Collected end-user boards: {discovery.funnel.collectedBoards}</p>
-            <p className="rounded-lg border border-slate-200 bg-white p-3">Relevant roles on collected boards: {discovery.funnel.relevantRoles}</p>
-            <p className="rounded-lg border border-slate-200 bg-white p-3">Source-listed open roles: {discovery.funnel.verifiedOpenRoles}</p>
+            <p className="metric"><strong>{discovery.funnel.candidateEmployers}</strong><span>Candidate end-user employers</span></p>
+            <p className="metric"><strong>{discovery.funnel.verifiedCareerBoards}</strong><span>Verified career boards</span></p>
+            <p className="metric"><strong>{discovery.funnel.supportedBoards}</strong><span>Supported end-user boards</span></p>
+            <p className="metric"><strong>{discovery.funnel.collectedBoards}</strong><span>Collected end-user boards</span></p>
+            <p className="metric"><strong>{discovery.funnel.relevantRoles}</strong><span>Relevant roles on collected boards</span></p>
+            <p className="metric"><strong>{discovery.funnel.verifiedOpenRoles}</strong><span>Source-listed open roles</span></p>
           </div>
           <p className="text-slate-600">Consulting boards with a documented adapter, kept out of the end-user funnel: {discovery.funnel.consultingSupportedBoards}. Direct end-client roles in this account: {discovery.directEndClient.roles} (full-time {discovery.directEndClient.schedule.full_time}, part-time {discovery.directEndClient.schedule.part_time}, contract {discovery.directEndClient.schedule.contract}, not stated {discovery.directEndClient.schedule.unknown}).</p>
           <form className="grid gap-3 md:grid-cols-2" onSubmit={async (event) => {
@@ -188,11 +188,11 @@ export default function Sources() {
         </section>
       )}
       {error && <p className="text-sm text-amber-800">{error}</p>}
-      {message && <p className="text-sm text-cyan-800">{message}</p>}
+      {message && <p className="text-sm font-medium text-moss">{message}</p>}
       {showManual && (
       <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Add a source</h2>
+        <h2 className="text-3xl">Add a source</h2>
         <p className="text-sm text-slate-600">Use this only for a board that is not already collected. Greenhouse and Lever stay paused until you record a public-read terms review and enable them.</p>
       </div>
 

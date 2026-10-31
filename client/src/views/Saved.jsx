@@ -31,7 +31,7 @@ export default function Saved({ onOpen, onApplySearch }) {
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-lg font-semibold">Saved opportunities</h2>
+        <h2 className="text-4xl">Saved opportunities</h2>
         <p className="text-sm text-slate-600">Personal status stays in your account. Employers are not contacted.</p>
         {error && <p className="mt-2 text-sm text-amber-800">{error}</p>}
         <div className="mt-3 space-y-2">
@@ -48,7 +48,7 @@ export default function Saved({ onOpen, onApplySearch }) {
         </div>
       </section>
       <section>
-        <h2 className="text-lg font-semibold">Saved searches</h2>
+        <h2 className="mt-2 text-3xl">Saved searches</h2>
         <div className="mt-3 space-y-2">
           {searches.length === 0 && <p className="text-sm text-slate-500">No saved searches yet.</p>}
           {searches.map((search) => (

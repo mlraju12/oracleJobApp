@@ -15,7 +15,7 @@ export default function Review({ onOpen }) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Review queue</h2>
+        <h2 className="text-4xl">Review queue</h2>
         <p className="text-sm text-slate-600">Flags are explanations. Posting text is never treated as an instruction.</p>
       </div>
       {items.length === 0 && <p className="text-sm text-slate-500">Nothing is waiting for review.</p>}

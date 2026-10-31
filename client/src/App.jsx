@@ -76,28 +76,29 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-200">
-      <header className="border-b border-slate-400 bg-slate-300">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4">
+    <div className="min-h-screen">
+      <header className="relative bg-forest text-[#f7f1e6] shadow-[0_16px_40px_-24px_rgba(20,49,44,0.9)]">
+        <div className="h-1 bg-gradient-to-r from-[#e8b86d] via-copper to-moss" />
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">SLP Microsystems</p>
-            <h1 className="text-xl font-semibold">Oracle HCM Opportunities</h1>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#e8b86d]">SLP Microsystems</p>
+            <h1 className="mt-1 text-3xl text-[#fffaf3]">Oracle HCM Opportunities</h1>
           </div>
-          <div className="flex items-center gap-3 text-sm text-slate-600">
-            <span>{user.username}</span>
+          <div className="flex items-center gap-3 text-sm text-[#efe6d6]">
+            <span className="rounded-full bg-white/10 px-3 py-1">{user.username}</span>
             <button
-              className="btn-quiet"
+              className="inline-flex items-center gap-2 rounded-full border border-white/20 px-3 py-1.5 text-sm text-[#fffaf3] hover:bg-white/10"
               onClick={() => api('/api/auth/logout', { method: 'POST' }).then(() => setUser(null))}
             >
               <LogOut size={16} /> Sign out
             </button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 px-4 pb-3">
+        <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 pb-4">
           {NAV.map(([id, label, Icon]) => (
             <button
               key={id}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${view === id || (view === 'detail' && id === 'feed') ? 'bg-cyan-700 text-white' : 'text-slate-700 hover:bg-slate-200'}`}
+              className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-sm ${view === id || (view === 'detail' && id === 'feed') ? 'bg-copper text-white shadow-sm' : 'text-[#efe6d6] hover:bg-white/10'}`}
               onClick={() => setView(id)}
             >
               <Icon size={16} /> {label}
@@ -105,7 +106,7 @@ export default function App() {
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-8">
         {error && <p className="mb-4 text-sm text-amber-800">{error}</p>}
         {view === 'feed' && <Feed filters={filters} setFilters={setFilters} onOpen={openOpportunity} />}
         {view === 'detail' && <Detail id={selectedId} onBack={() => setView('feed')} />}
@@ -148,10 +149,10 @@ function Login({ onUser }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center bg-slate-200 px-4">
-      <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">SLP Microsystems</p>
-      <h1 className="mt-1 text-2xl font-semibold">Oracle HCM Opportunities</h1>
-      <p className="mt-2 text-sm text-slate-600">
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-copper">SLP Microsystems</p>
+      <h1 className="mt-2 text-4xl text-ink">Oracle HCM Opportunities</h1>
+      <p className="mt-3 text-sm leading-6 text-[#5c564e]">
         Public Oracle HCM boards are collected for this account, including Deloitte, EY, PwC, and Accenture Federal. Upload a resume, then open the employer’s own application. This app does not submit the form.
       </p>
       <form className="panel mt-6 space-y-3 p-5" onSubmit={submit}>

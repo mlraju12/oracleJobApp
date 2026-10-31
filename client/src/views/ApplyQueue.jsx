@@ -62,7 +62,7 @@ export default function ApplyQueue() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Apply queue</h2>
+        <h2 className="text-4xl">Apply queue</h2>
         <p className="text-sm text-slate-600">
           Open one official posting at a time. Attach the resume saved on this account and send the form on the employer site.
           This app does not fill or submit it. After you submit there, mark it here and the next posting opens.

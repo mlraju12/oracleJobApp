@@ -4,21 +4,43 @@
 
 @layer base {
   body {
-    @apply bg-slate-200 text-slate-900 antialiased;
+    @apply bg-paper font-sans text-ink antialiased;
+    background-image:
+      radial-gradient(1100px 420px at 0% -10%, rgba(196, 98, 45, 0.14), transparent 55%),
+      radial-gradient(900px 380px at 100% 0%, rgba(31, 107, 88, 0.12), transparent 50%);
+    background-attachment: fixed;
+  }
+  h1, h2, h3 {
+    @apply font-display font-medium tracking-tight;
+  }
+  input[type='checkbox'] {
+    accent-color: #c4622d;
   }
 }
 
 @layer components {
   .panel {
-    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+    @apply rounded-3xl border border-line bg-card shadow-[0_18px_40px_-28px_rgba(26,24,20,0.55)];
   }
   .field {
-    @apply mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-600;
+    @apply mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-copper focus:ring-2 focus:ring-copper/15;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-700 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-copper px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#a84f22] disabled:opacity-50;
   }
   .btn-quiet {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 hover:bg-slate-100;
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-ink transition hover:border-copper/40 hover:bg-[#fff6ef];
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full bg-[#f3eee4] px-2.5 py-1 text-xs text-[#4c463e];
+  }
+  .metric {
+    @apply rounded-2xl border border-line bg-white px-4 py-3;
+  }
+  .metric strong {
+    @apply block font-display text-3xl font-medium leading-none text-ink;
+  }
+  .metric span {
+    @apply mt-2 block text-xs leading-snug text-[#6d665c];
   }
 }

@@ -75,7 +75,7 @@ export default function Detail({ id, onBack }) {
       )}
       <div className="panel p-5">
         <p className="text-sm text-slate-600">{opportunity.employerName} · {opportunity.sourceOwnership.replaceAll('_', ' ')}{opportunity.hiringContext === 'direct_client' ? ' · Direct client' : ''}{opportunity.hiringContext === 'consulting_firm' ? ' · Consulting firm' : ''}</p>
-        <h2 className="mt-1 text-2xl font-semibold">{opportunity.title}</h2>
+        <h2 className="mt-1 text-3xl">{opportunity.title}</h2>
         {opportunity.oracle && opportunity.oracle.relevance && (
           <p className="mt-2 text-sm text-slate-700">Relevance {opportunity.oracle.relevance.score}. {opportunity.oracle.relevance.basis}</p>
         )}
@@ -97,7 +97,7 @@ export default function Detail({ id, onBack }) {
           <p className="mt-1 text-sm text-slate-600">Contract duration stated by the source: {opportunity.contractDuration.text}</p>
         )}
         {opportunity.canonicalUrl ? (
-          <a className="mt-4 inline-flex items-center gap-2 text-sm text-cyan-700" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
+          <a className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-copper" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
             Open original posting <ExternalLink size={16} />
           </a>
         ) : <p className="mt-4 text-sm text-slate-500">Original URL was not published.</p>}
@@ -109,7 +109,7 @@ export default function Detail({ id, onBack }) {
         <ul className="mt-3 space-y-2 text-sm">
           {opportunity.oracle.matches.map((match, index) => (
             <li key={`${match.label}-${index}`} className="rounded-lg bg-slate-50 p-3">
-              <span className="text-cyan-700">{match.label}.</span> <span className="text-slate-700">“{match.excerpt}”</span>
+              <span className="font-semibold text-copper">{match.label}.</span> <span className="text-slate-700">“{match.excerpt}”</span>
             </li>
           ))}
         </ul>
