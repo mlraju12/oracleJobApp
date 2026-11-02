@@ -27,6 +27,7 @@ const EMPTY = {
   experienceMin: '',
   experienceMax: '',
   excludeSource: '',
+  searchSource: '',
   directEndClient: '',
 };
 
@@ -51,8 +52,19 @@ export default function Feed({ filters, setFilters, onOpen }) {
 
   function setPulledFrom(event) {
     const included = new Set([...event.target.selectedOptions].map((option) => option.value));
-    const excluded = (data.sources || []).map((source) => source.id).filter((id) => !included.has(id));
-    setDraft({ ...draft, excludeSource: excluded.join(',') });
+    const catalog = (data.sources || []).filter((source) => !source.handoff);
+    const handoff = (data.sources || []).filter((source) => source.handoff);
+    const excluded = catalog.map((source) => source.id).filter((id) => !included.has(id));
+    const searchSource = handoff.map((source) => source.id).filter((id) => included.has(id));
+    setDraft({ ...draft, excludeSource: excluded.join(','), searchSource: searchSource.join(',') });
+  }
+
+  function pulledFromValue() {
+    const excluded = new Set(String(draft.excludeSource || '').split(',').filter(Boolean));
+    const picked = new Set(String(draft.searchSource || '').split(',').filter(Boolean));
+    return (data.sources || [])
+      .filter((source) => (source.handoff ? picked.has(source.id) : !excluded.has(source.id)))
+      .map((source) => source.id);
   }
 
   useEffect(() => {
@@ -140,10 +152,19 @@ export default function Feed({ filters, setFilters, onOpen }) {
         <Select label="Employer type" value={draft.employerType || ''} onChange={(employerType) => setDraft({ ...draft, employerType })} options={EMPLOYER_TYPES} />
         <Select label="Hiring relationship" value={draft.hiringRelationship || ''} onChange={(hiringRelationship) => setDraft({ ...draft, hiringRelationship })} options={HIRING_RELATIONSHIPS} />
         <Select label="Role" value={draft.roleCategory} onChange={(roleCategory) => setDraft({ ...draft, roleCategory })} options={ROLES} />
-        <label className="text-sm">Module
-          <select className="field" value={draft.module} onChange={(event) => setDraft({ ...draft, module: event.target.value })}>
-            {MODULES.map((mod) => <option key={mod || 'any'} value={mod}>{mod || 'Any module'}</option>)}
+        <label className="text-sm md:col-span-2">Modules
+          <select
+            multiple
+            className="field h-40"
+            value={String(draft.module || '').split(',').map((item) => item.trim()).filter(Boolean)}
+            onChange={(event) => {
+              const selected = [...event.target.selectedOptions].map((option) => option.value);
+              setDraft({ ...draft, module: selected.join(',') });
+            }}
+          >
+            {MODULES.filter(Boolean).map((mod) => <option key={mod} value={mod}>{mod}</option>)}
           </select>
+          <span className="mt-1 block text-xs text-[#6d665c]">Leave this empty for every module. A role matches if it is tagged with any selected module. Hold Ctrl and click to choose more than one, then click Search.</span>
         </label>
         <label className="text-sm">Workplace
           <select className="field" value={draft.workplace} onChange={(event) => setDraft({ ...draft, workplace: event.target.value })}>
@@ -210,12 +231,12 @@ export default function Feed({ filters, setFilters, onOpen }) {
           <select
             multiple
             className="field h-40"
-            value={(data.sources || []).map((source) => source.id).filter((id) => !String(draft.excludeSource || '').split(',').includes(id))}
+            value={pulledFromValue()}
             onChange={setPulledFrom}
           >
             {(data.sources || []).map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
           </select>
-          <span className="mt-1 block text-xs text-[#6d665c]">Selected sources stay in the results. Hold Ctrl and click to choose more than one, then click Search.</span>
+          <span className="mt-1 block text-xs text-[#6d665c]">Selected employer boards stay in the Oracle results. LinkedIn, Indeed, and Glassdoor are not collected. Choosing one fills that site’s public search with these filters. Hold Ctrl and click to choose more than one, then click Search.</span>
         </label>
         <div className="flex items-end gap-2 md:col-span-2">
           <button className="btn" type="submit">Search</button>
@@ -255,9 +276,22 @@ export default function Feed({ filters, setFilters, onOpen }) {
         <div className="panel p-6 text-sm text-slate-600">
           {collection && collection.refreshing
             ? 'Public boards are still being read. Listings appear after a source job list includes them.'
-            : 'No listings found across the monitored sources yet.'}
+            : (data.externalSearches || []).length
+              ? 'No listings in the Oracle sources match these filters.'
+              : 'No listings found across the monitored sources yet.'}
         </div>
       )}
+      {(data.externalSearches || []).map((search) => (
+        <article key={search.sourceId || search.name} className="panel p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-copper">{search.name}</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#5c564e]">{search.message}</p>
+          {search.url && (
+            <a className="btn mt-4" href={search.url} target="_blank" rel="noreferrer">
+              Open {search.name} search <ExternalLink size={14} />
+            </a>
+          )}
+        </article>
+      ))}
       <div className="space-y-3">
         {data.opportunities.map((opportunity) => (
           <article key={opportunity.id} className="panel p-5">

@@ -827,4 +827,117 @@ describe('opportunities API', () => {
     expect(quiet.status).toBe(404);
     expect(calls).toBe(0);
   });
+
+  test('module filter keeps a role that matches any selected module', async () => {
+    const me = await agent.get('/api/auth/me');
+    const tenantId = me.body.user.tenantId;
+    const now = new Date();
+    const source = await EmployerSource.create({
+      tenantId,
+      name: 'Module Filter Co',
+      domain: 'module-filter.example',
+      employerKey: 'module-filter.example',
+      adapterType: 'greenhouse-job-board',
+      status: 'enabled',
+      termsReviewStatus: 'public_read_documented',
+    });
+    await applyListing(source, {
+      sourceJobId: 'module-payroll',
+      title: 'ModuleFilterToken Oracle Cloud HCM Payroll Analyst',
+      descriptionText: 'Oracle Cloud HCM payroll for the United States.',
+      canonicalUrl: 'https://example.com/module-payroll',
+    }, { now });
+    await applyListing(source, {
+      sourceJobId: 'module-absence',
+      title: 'ModuleFilterToken Oracle Cloud Absence Consultant',
+      descriptionText: 'Oracle Cloud Absence Management consultant.',
+      canonicalUrl: 'https://example.com/module-absence',
+    }, { now });
+    await applyListing(source, {
+      sourceJobId: 'module-security',
+      title: 'ModuleFilterToken Oracle Cloud HCM Security Analyst',
+      descriptionText: 'Oracle Cloud HCM security administration.',
+      canonicalUrl: 'https://example.com/module-security',
+    }, { now });
+    const titles = async (module) => {
+      const response = await agent.get('/api/opportunities').query({ q: 'ModuleFilterToken', module });
+      expect(response.status).toBe(200);
+      return response.body.opportunities.map((item) => item.title).sort();
+    };
+    expect(await titles('Payroll, Absence')).toEqual([
+      'ModuleFilterToken Oracle Cloud Absence Consultant',
+      'ModuleFilterToken Oracle Cloud HCM Payroll Analyst',
+    ]);
+    expect(await titles('Payroll')).toEqual(['ModuleFilterToken Oracle Cloud HCM Payroll Analyst']);
+    expect(await titles('')).toEqual([
+      'ModuleFilterToken Oracle Cloud Absence Consultant',
+      'ModuleFilterToken Oracle Cloud HCM Payroll Analyst',
+      'ModuleFilterToken Oracle Cloud HCM Security Analyst',
+    ]);
+    expect(await titles('Not A Module')).toEqual([
+      'ModuleFilterToken Oracle Cloud Absence Consultant',
+      'ModuleFilterToken Oracle Cloud HCM Payroll Analyst',
+      'ModuleFilterToken Oracle Cloud HCM Security Analyst',
+    ]);
+  });
+
+  test('selected LinkedIn, Indeed, and Glassdoor searches add no listings', async () => {
+    const me = await agent.get('/api/auth/me');
+    const tenantId = me.body.user.tenantId;
+    const before = await Opportunity.countDocuments({ tenantId });
+    const linkedin = await EmployerSource.create({
+      tenantId,
+      name: 'LinkedIn',
+      domain: 'linkedin.com',
+      employerKey: 'linkedin.com',
+      adapterType: 'external-search',
+      catalogKey: 'external:linkedin',
+      status: 'paused',
+      adapterConfig: { provider: 'linkedin' },
+    });
+    const indeed = await EmployerSource.create({
+      tenantId,
+      name: 'Indeed',
+      domain: 'indeed.com',
+      employerKey: 'indeed.com',
+      adapterType: 'external-search',
+      catalogKey: 'external:indeed',
+      status: 'paused',
+      adapterConfig: { provider: 'indeed' },
+    });
+    const glassdoor = await EmployerSource.create({
+      tenantId,
+      name: 'Glassdoor',
+      domain: 'glassdoor.com',
+      employerKey: 'glassdoor.com',
+      adapterType: 'external-search',
+      catalogKey: 'external:glassdoor',
+      status: 'paused',
+      adapterConfig: { provider: 'glassdoor' },
+    });
+    const response = await agent.get('/api/opportunities').query({
+      q: 'payroll',
+      location: 'Austin',
+      workplace: 'remote',
+      platform: 'oracle_cloud_hcm,mixed',
+      module: 'Payroll',
+      searchSource: [linkedin._id, indeed._id, glassdoor._id].join(','),
+    });
+    expect(response.status).toBe(200);
+    const byName = Object.fromEntries(response.body.externalSearches.map((item) => [item.name, item]));
+    expect(Object.keys(byName).sort()).toEqual(['Glassdoor', 'Indeed', 'LinkedIn']);
+    expect(new URL(byName.LinkedIn.url).searchParams.get('keywords')).toContain('payroll');
+    expect(new URL(byName.LinkedIn.url).searchParams.get('location')).toBe('Austin');
+    expect(new URL(byName.LinkedIn.url).searchParams.get('f_WT')).toBe('2');
+    expect(byName.LinkedIn.message).toMatch(/No LinkedIn rows were added/);
+    expect(new URL(byName.Indeed.url).hostname).toBe('www.indeed.com');
+    expect(new URL(byName.Glassdoor.url).hostname).toBe('www.glassdoor.com');
+    expect(response.body.opportunities.every((item) => item.sourceName !== 'LinkedIn')).toBe(true);
+    expect(response.body.sources.find((source) => source.name === 'LinkedIn').handoff).toBe(true);
+    expect(await Opportunity.countDocuments({ tenantId })).toBe(before);
+    const quiet = await agent.get('/api/opportunities').query({ q: 'payroll' });
+    expect(quiet.body.externalSearches).toEqual([]);
+    const blocked = await post(`/api/sources/${linkedin._id}/refresh`, {});
+    expect(blocked.status).toBe(409);
+  });
 });

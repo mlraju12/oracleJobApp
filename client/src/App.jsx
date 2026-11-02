@@ -48,6 +48,7 @@ export default function App() {
     experienceMin: '',
     experienceMax: '',
     excludeSource: '',
+    searchSource: '',
     directEndClient: '',
   });
   const [error, setError] = useState('');

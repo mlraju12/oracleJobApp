@@ -188,7 +188,7 @@ export default function Detail({ id, onBack }) {
         <h3 className="font-semibold">Apply</h3>
         <p className="mt-1 text-sm text-slate-600">
           {payload.resume ? `Resume on file: ${payload.resume.fileName}.` : 'Upload a resume on the Resume tab first.'}
-          {' '}The application is completed on the employer’s site or on Dice. LinkedIn and Indeed do not offer a public job search this app can read, and none of those sites accept the application from here.
+          {' '}The application is completed on the employer’s site or on Dice. LinkedIn, Indeed, and Glassdoor open as public searches from the opportunities list. None of those sites accept the application from here.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button className="btn" type="button" onClick={openApplication}>Open employer application</button>
