@@ -49,11 +49,10 @@ export default function Feed({ filters, setFilters, onOpen }) {
     document.getElementById('opportunity-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function setSourceIncluded(id, included) {
-    const excluded = new Set(String(draft.excludeSource || '').split(',').filter(Boolean));
-    if (included) excluded.delete(id);
-    else excluded.add(id);
-    setDraft({ ...draft, excludeSource: [...excluded].join(',') });
+  function setPulledFrom(event) {
+    const included = new Set([...event.target.selectedOptions].map((option) => option.value));
+    const excluded = (data.sources || []).map((source) => source.id).filter((id) => !included.has(id));
+    setDraft({ ...draft, excludeSource: excluded.join(',') });
   }
 
   useEffect(() => {
@@ -207,25 +206,17 @@ export default function Feed({ filters, setFilters, onOpen }) {
             <option value="true">Deloitte, PwC, EY, KPMG, Accenture</option>
           </select>
         </label>
-        <fieldset className="md:col-span-4">
-          <legend className="text-sm font-medium">Pulled from</legend>
-          <p className="mt-1 text-xs text-[#6d665c]">Uncheck a source to leave its listings out, then click Search. Uncheck Dice to hide jobs pulled from Dice.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(data.sources || []).map((source) => {
-              const included = !String(draft.excludeSource || '').split(',').includes(source.id);
-              return (
-                <label key={source.id} className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${included ? 'border-moss/30 bg-[#eef6f3] text-forest' : 'border-line bg-white text-[#8a8378]'}`}>
-                  <input
-                    type="checkbox"
-                    checked={included}
-                    onChange={(event) => setSourceIncluded(source.id, event.target.checked)}
-                  />
-                  {source.name}
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
+        <label className="text-sm md:col-span-2">Pulled from
+          <select
+            multiple
+            className="field h-40"
+            value={(data.sources || []).map((source) => source.id).filter((id) => !String(draft.excludeSource || '').split(',').includes(id))}
+            onChange={setPulledFrom}
+          >
+            {(data.sources || []).map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
+          </select>
+          <span className="mt-1 block text-xs text-[#6d665c]">Selected sources stay in the results. Hold Ctrl and click to choose more than one, then click Search.</span>
+        </label>
         <div className="flex items-end gap-2 md:col-span-2">
           <button className="btn" type="submit">Search</button>
           <button className="btn-quiet" type="button" onClick={() => { setDraft(EMPTY); setFilters(EMPTY); }}>Reset</button>
