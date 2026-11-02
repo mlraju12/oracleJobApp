@@ -118,18 +118,23 @@ async function readJson(url, deps, allowedHosts) {
 
 async function collectHimalayas(source, deps) {
   const config = source.adapterConfig || {};
-  const query = config.query || 'Oracle HCM';
+  const queries = Array.isArray(config.queries) && config.queries.length
+    ? config.queries
+    : [config.query || 'Oracle HCM'];
   const maxPages = deps.maxPages || config.maxPages || 15;
   const pause = deps.minIntervalMs != null ? deps.minIntervalMs : (config.minIntervalMs != null ? config.minIntervalMs : 400);
   const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const seen = new Map();
-  let page = 1;
   let requests = 0;
   let raw = 0;
-  let finished = false;
+  let finished = true;
   let truncated = false;
-  let total = null;
+  let total = 0;
 
+  for (const query of queries) {
+  let page = 1;
+  let queryFinished = false;
+  let queryTotal = null;
   while (page <= maxPages) {
     if (requests && pause) await sleep(pause);
     let response;
@@ -152,7 +157,7 @@ async function collectHimalayas(source, deps) {
         listings: [...seen.values()],
       });
     }
-    if (Number.isFinite(Number(body.totalCount))) total = Number(body.totalCount);
+    if (Number.isFinite(Number(body.totalCount))) queryTotal = Number(body.totalCount);
     raw += jobs.length;
     for (const job of jobs) {
       const mapped = mapHimalayasJob(job);
@@ -160,9 +165,9 @@ async function collectHimalayas(source, deps) {
       seen.set(mapped.sourceJobId, mapped);
     }
     const offset = Number(body.offset);
-    const covered = Number.isFinite(offset) ? offset + jobs.length : raw;
-    if (jobs.length === 0 || (total != null && covered >= total) || (total == null && jobs.length < 20)) {
-      finished = true;
+    const covered = Number.isFinite(offset) ? offset + jobs.length : page * jobs.length;
+    if (jobs.length === 0 || (queryTotal != null && covered >= queryTotal) || (queryTotal == null && jobs.length < 20)) {
+      queryFinished = true;
       break;
     }
     if (page >= maxPages) {
@@ -170,6 +175,9 @@ async function collectHimalayas(source, deps) {
       break;
     }
     page += 1;
+  }
+  if (queryTotal != null) total += queryTotal;
+  if (!queryFinished) finished = false;
   }
 
   return {

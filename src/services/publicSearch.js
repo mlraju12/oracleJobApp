@@ -138,12 +138,15 @@ async function readPage(url, deps, host) {
 async function collectDeloitte(source, deps) {
   const searchUrl = (source.adapterConfig && source.adapterConfig.searchUrl)
     || 'https://apply.deloitte.com/en_US/careers/SearchJobs/Oracle%20Cloud%20HCM';
+  const searchUrls = source.adapterConfig && Array.isArray(source.adapterConfig.searchUrls) && source.adapterConfig.searchUrls.length
+    ? source.adapterConfig.searchUrls
+    : [searchUrl];
   const feedUrl = (source.adapterConfig && source.adapterConfig.feedUrl)
     || 'https://apply.deloitte.com/en_US/careers/SearchJobs/Oracle%20Cloud%20HCM/feed/?jobRecordsPerPage=10';
   const pause = deps.minIntervalMs != null ? deps.minIntervalMs : 400;
   const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const maxPages = deps.maxPages || 6;
-  const pages = [searchUrl];
+  const maxPages = deps.maxPages || Math.max(6, searchUrls.length);
+  const pages = [...searchUrls];
   const seenPages = new Set();
   const links = new Map();
   let requests = 0;
@@ -223,11 +226,14 @@ async function collectDeloitte(source, deps) {
 async function collectEy(source, deps) {
   const searchUrl = (source.adapterConfig && source.adapterConfig.searchUrl)
     || 'https://careers.ey.com/ey/search/?q=Oracle%20Cloud%20HCM&startrow=0';
+  const searchUrls = source.adapterConfig && Array.isArray(source.adapterConfig.searchUrls) && source.adapterConfig.searchUrls.length
+    ? source.adapterConfig.searchUrls
+    : [searchUrl];
   const pause = deps.minIntervalMs != null ? deps.minIntervalMs : 400;
   const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const maxPages = deps.maxPages || 4;
+  const maxPages = deps.maxPages || Math.max(4, searchUrls.length);
   const detailCap = deps.detailCap || 30;
-  const queue = [searchUrl];
+  const queue = [...searchUrls];
   const seenPages = new Set();
   const jobs = new Map();
   let requests = 0;
@@ -292,20 +298,38 @@ async function collectEy(source, deps) {
 async function collectPwc(source, deps) {
   const searchUrl = (source.adapterConfig && source.adapterConfig.searchUrl)
     || 'https://jobs-us.pwc.com/us/en/search-results?keywords=Oracle%20HCM';
-  const html = await readPage(searchUrl, deps, PWC_HOST);
-  const mapped = mapPwcJobs(html);
-  const complete = mapped.totalHits != null && mapped.listings.length >= mapped.totalHits;
+  const searchUrls = source.adapterConfig && Array.isArray(source.adapterConfig.searchUrls) && source.adapterConfig.searchUrls.length
+    ? source.adapterConfig.searchUrls
+    : [searchUrl];
+  const pause = deps.minIntervalMs != null ? deps.minIntervalMs : 400;
+  const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const seen = new Map();
+  let complete = true;
+  let reported = 0;
+  let requests = 0;
+  for (const url of searchUrls) {
+    if (requests && pause) await sleep(pause);
+    requests += 1;
+    const html = await readPage(url, deps, PWC_HOST);
+    const mapped = mapPwcJobs(html);
+    if (mapped.totalHits != null) reported += mapped.totalHits;
+    if (!(mapped.totalHits != null && mapped.listings.length >= mapped.totalHits)) complete = false;
+    for (const listing of mapped.listings) {
+      if (!seen.has(listing.sourceJobId)) seen.set(listing.sourceJobId, listing);
+    }
+  }
+  const listings = [...seen.values()];
   return {
-    listings: mapped.listings,
+    listings,
     complete,
     applyAbsencePolicy: complete,
-    pages: 1,
-    requests: 1,
+    pages: requests,
+    requests,
     warnings: complete ? [] : ['The public PwC search page did not include every hit in the first response.'],
     completeness: {
       kind: 'pwc.public-search',
-      fetched: mapped.listings.length,
-      reported: mapped.totalHits,
+      fetched: listings.length,
+      reported,
       verified: complete,
     },
   };

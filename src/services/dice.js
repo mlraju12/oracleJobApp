@@ -9,6 +9,9 @@ const DICE_MCP = 'https://mcp.dice.com/mcp';
 const DICE_KEYWORDS = [
   'Oracle Cloud HCM',
   'Oracle Fusion HCM',
+  'Oracle Fusion',
+  'Oracle Cloud Time',
+  'Oracle Cloud Security',
   'Oracle Cloud Payroll',
   'Oracle Fusion Payroll',
   'Oracle Cloud Time and Labor',

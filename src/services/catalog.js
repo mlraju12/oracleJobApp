@@ -1,5 +1,20 @@
 const { EmployerSource } = require('../models');
 const { DICE_KEYWORDS } = require('./dice');
+
+const WIDE_QUERIES = [
+  'Oracle HCM',
+  'Oracle Cloud HCM',
+  'Oracle Fusion HCM',
+  'Oracle Fusion',
+  'Oracle Cloud Payroll',
+  'Oracle Cloud Absence',
+  'Oracle Cloud Time',
+  'Oracle Cloud Security',
+];
+
+function searchUrlsFor(base, queries) {
+  return queries.map((query) => `${base}${encodeURIComponent(query)}`);
+}
 const { employerKey } = require('./text');
 const { isDue, refreshSource } = require('./collect');
 const { classFromSource } = require('./employerClass');
@@ -158,7 +173,7 @@ const PUBLIC_BOARDS = [
     accessDocumentationUrl: 'https://github.com/Himalayas-App/remote-jobs-api',
     accessNotes: 'Himalayas public search GET https://himalayas.app/jobs/api/search. No API key. Checked 2026-10-31: query Oracle HCM returned a JSON job list with title, description, company, published time, and application link. Page 2 advanced with offset 20. The app stores the Himalayas job URL and does not submit the application.',
     termsNotes: 'The Himalayas remote jobs API asks callers to credit Himalayas and link the application URL. Reviewed 2026-10-31. Jobs can be cached by the publisher. Salary is stored only when min or max is present.',
-    adapterConfig: { provider: 'himalayas', query: 'Oracle HCM', maxPages: 15, minIntervalMs: 400 },
+    adapterConfig: { provider: 'himalayas', query: 'Oracle HCM', queries: WIDE_QUERIES, maxPages: 4, minIntervalMs: 400 },
   },
   {
     key: 'public:jobicy',
@@ -192,6 +207,7 @@ const PUBLIC_BOARDS = [
     adapterConfig: {
       provider: 'deloitte',
       searchUrl: 'https://apply.deloitte.com/en_US/careers/SearchJobs/Oracle%20Cloud%20HCM',
+      searchUrls: searchUrlsFor('https://apply.deloitte.com/en_US/careers/SearchJobs/', WIDE_QUERIES),
       feedUrl: 'https://apply.deloitte.com/en_US/careers/SearchJobs/Oracle%20Cloud%20HCM/feed/?jobRecordsPerPage=10',
       minIntervalMs: 400,
     },
@@ -211,6 +227,7 @@ const PUBLIC_BOARDS = [
     adapterConfig: {
       provider: 'ey',
       searchUrl: 'https://careers.ey.com/ey/search/?q=Oracle%20Cloud%20HCM&startrow=0',
+      searchUrls: WIDE_QUERIES.map((query) => `https://careers.ey.com/ey/search/?q=${encodeURIComponent(query)}&startrow=0`),
       minIntervalMs: 400,
     },
   },
@@ -229,6 +246,7 @@ const PUBLIC_BOARDS = [
     adapterConfig: {
       provider: 'pwc',
       searchUrl: 'https://jobs-us.pwc.com/us/en/search-results?keywords=Oracle%20HCM',
+      searchUrls: searchUrlsFor('https://jobs-us.pwc.com/us/en/search-results?keywords=', WIDE_QUERIES),
     },
   },
   {
@@ -374,14 +392,16 @@ async function ensurePublicCatalog(tenantId) {
     let source = await EmployerSource.findOne({ tenantId, catalogKey: board.key });
     if (!source) {
       source = await EmployerSource.create(boardRecord(tenantId, board));
-    } else if (board.adapterConfig && Array.isArray(board.adapterConfig.keywords)) {
-      const current = (source.adapterConfig && source.adapterConfig.keywords) || [];
-      if (JSON.stringify(current) !== JSON.stringify(board.adapterConfig.keywords)) {
-        source.adapterConfig = {
-          ...(source.adapterConfig || {}),
-          keywords: board.adapterConfig.keywords,
-          maxPages: board.adapterConfig.maxPages,
-        };
+    } else if (board.adapterConfig) {
+      const current = source.adapterConfig || {};
+      const next = board.adapterConfig;
+      const keys = ['keywords', 'queries', 'searchUrls', 'maxPages'];
+      const changed = keys.some((key) => next[key] != null && JSON.stringify(current[key]) !== JSON.stringify(next[key]));
+      if (changed) {
+        source.adapterConfig = { ...current };
+        for (const key of keys) {
+          if (next[key] != null) source.adapterConfig[key] = next[key];
+        }
         source.markModified('adapterConfig');
         await source.save();
       }

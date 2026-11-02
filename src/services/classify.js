@@ -7,7 +7,7 @@ const CLOUD_PATTERNS = [
   { label: 'Fusion Cloud HCM', pattern: /fusion\s+cloud\s+hcm/i },
   { label: 'Oracle Fusion Cloud HCM context', pattern: /oracle\s+fusion\s+cloud(?=[^.]{0,80}\b(hcm|human capital|payroll|absence|core hr)\b)/i },
   { label: 'Oracle Cloud HCM module', pattern: /oracle\s+(?:cloud|fusion)(?:\s+cloud)?(?:\s+hcm)?\s+(?:payroll|absence(?:\s+management)?|time\s+(?:and|&)\s+labou?r|fast\s+formulas?|benefits|journeys)/i },
-  { label: 'Oracle HCM security', pattern: /oracle\s+(?:cloud\s+hcm|fusion(?:\s+hcm)?)\s+security|\bhcm\s+security\b/i },
+  { label: 'Oracle HCM security', pattern: /oracle\s+(?:cloud(?:\s+hcm)?|fusion(?:\s+hcm)?)\s+security|\bhcm\s+security\b/i },
   { label: 'Oracle HCM reports', pattern: /oracle\s+(?:cloud|fusion)(?:\s+cloud)?\s+hcm\s+reports|oracle\s+(?:cloud|fusion)(?:\s+hcm)?\s+(?:bi\s+publisher|otbi|hcm\s+extracts?)/i },
   { label: 'Oracle Payroll', pattern: /oracle\s+payroll/i },
 ];
@@ -26,13 +26,13 @@ const MODULES = [
   { id: 'Core HR', patterns: [/\bcore hr\b/i, /\bglobal hr\b/i, /\bglobal human resources\b/i, /\bworkforce structures\b/i, /\bhr help\s*desk\b/i] },
   { id: 'Payroll', patterns: [/\bpayroll\b/i, /\bus payroll\b/i] },
   { id: 'Absence', patterns: [/\babsence management\b/i, /\babsence\b/i] },
-  { id: 'Time and Labor', patterns: [/\btime and labor\b/i, /\btime & labor\b/i, /\btime and labour\b/i, /\botl\b/i] },
+  { id: 'Time and Labor', patterns: [/\btime and labor\b/i, /\btime & labor\b/i, /\btime and labour\b/i, /\botl\b/i, /\boracle\s+(?:cloud|fusion)(?:\s+hcm)?\s+time\b/i] },
   { id: 'Benefits', patterns: [/\bbenefits\b/i] },
   { id: 'Compensation', patterns: [/\bcompensation\b/i] },
   { id: 'Recruiting', patterns: [/\boracle recruiting\b/i, /\brecruiting cloud\b/i, /\bfusion recruiting\b/i, /\brecruiting\s*\(\s*orc\s*\)/i] },
   { id: 'Learning', patterns: [/\boracle learning\b/i, /\blearning cloud\b/i] },
   { id: 'Talent', patterns: [/\btalent management\b/i, /\boracle talent\b/i] },
-  { id: 'Security', patterns: [/\bhcm security\b/i, /oracle\s+(?:cloud\s+hcm|fusion(?:\s+hcm)?)\s+security/i] },
+  { id: 'Security', patterns: [/\bhcm security\b/i, /oracle\s+(?:cloud(?:\s+hcm)?|fusion(?:\s+hcm)?)\s+security/i] },
   { id: 'Journeys', patterns: [/\bjourneys\b/i] },
   { id: 'Integrations', patterns: [/\bintegrations?\b/i, /\boracle integration cloud\b/i] },
   { id: 'HDL', patterns: [/\bhcm data loader\b/i, /\bhsdl\b/i, /\bhdl\b/i] },
@@ -42,6 +42,16 @@ const MODULES = [
 ];
 
 const SPECIFIC_MODULES = new Set(['HDL', 'HCM Extracts', 'Fast Formulas']);
+
+const TITLE_FAMILY = [
+  { label: 'Oracle Fusion', pattern: /\boracle\s+fusion\b/i },
+  { label: 'Oracle Fusion HCM', pattern: /\boracle\s+fusion(?:\s+cloud)?\s+hcm\b/i },
+  { label: 'Oracle Cloud HCM', pattern: /\boracle\s+cloud\s+hcm\b/i },
+  { label: 'Oracle Cloud Absence', pattern: /\boracle\s+(?:cloud|fusion)(?:\s+hcm)?\s+absence\b/i },
+  { label: 'Oracle Cloud Time', pattern: /\boracle\s+(?:cloud|fusion)(?:\s+hcm)?\s+time\b/i },
+  { label: 'Oracle Cloud Payroll', pattern: /\boracle\s+(?:cloud|fusion)(?:\s+hcm)?\s+payroll\b/i },
+  { label: 'Oracle Cloud Security', pattern: /\boracle\s+(?:cloud|fusion)(?:\s+hcm)?\s+security\b/i },
+];
 
 const ROLE_RULES = [
   { category: 'techno_functional', label: 'Techno-functional', pattern: /techno[-\s]?functional/i },
@@ -87,7 +97,11 @@ function classifyOracleHcm(input) {
   const title = collapse(input && input.title);
   const description = collapse(input && input.description);
   const text = `${title}\n${description}`;
+  const titleFamily = matchRules(title, TITLE_FAMILY);
   let cloud = matchRules(text, CLOUD_PATTERNS);
+  for (const hit of titleFamily) {
+    if (!cloud.some((item) => item.label === hit.label)) cloud.push(hit);
+  }
   const ebs = matchRules(text, EBS_PATTERNS);
   const peoplesoft = matchRules(text, PEOPLESOFT_PATTERNS);
   const oracleMention = findPhrase(text, /\boracle\b/i);
@@ -110,7 +124,7 @@ function classifyOracleHcm(input) {
   const hrisTitle = titleIsHrisRole(title);
   const conflictingProduct = titleNamesConflictingProduct(title);
   const genericSuite = titleNamesGenericSuite(title) && !hrisTitle;
-  if ((platform === 'oracle_cloud_hcm' || platform === 'mixed') && !titleHasHcmRole(title) && (conflictingProduct || genericSuite)) {
+  if ((platform === 'oracle_cloud_hcm' || platform === 'mixed') && !titleFamily.length && !titleHasHcmRole(title) && (conflictingProduct || genericSuite)) {
     platform = oracleMention ? 'unrelated_oracle' : 'unrelated';
     suppressedReason = conflictingProduct
       ? 'The title names a different product. Oracle Cloud HCM wording in the description was not treated as the role.'
@@ -196,7 +210,8 @@ function scoreRelevance(title, description, platform, modules) {
       basis: 'No Oracle Cloud HCM phrase. A zero score is not a statement that the posting is closed.',
     };
   }
-  const titleHit = CLOUD_PATTERNS.some((rule) => rule.pattern.test(title || ''));
+  const titleHit = CLOUD_PATTERNS.some((rule) => rule.pattern.test(title || ''))
+    || TITLE_FAMILY.some((rule) => rule.pattern.test(title || ''));
   const body = String(description || '');
   const index = body.search(/oracle\s+(?:cloud|fusion|hcm)/i);
   const before = index >= 0 ? body.slice(0, index).toLowerCase() : '';

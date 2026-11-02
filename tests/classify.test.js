@@ -103,6 +103,10 @@ describe('Oracle HCM classification', () => {
       ['Oracle Cloud Benefits consultant', 'Benefits'],
       ['Oracle Cloud Journeys consultant', 'Journeys'],
       ['Oracle Fusion Security consultant', 'Security'],
+      ['Oracle Cloud Security engineer', 'Security'],
+      ['Oracle Cloud Time consultant', 'Time and Labor'],
+      ['Oracle Cloud Absence consultant', 'Absence'],
+      ['Senior Oracle Fusion consultant', 'Core HR'],
       ['Oracle Cloud HCM Reports developer', 'BI Publisher'],
       ['Oracle Cloud HCM entry level intern', 'Core HR'],
     ];
@@ -113,16 +117,18 @@ describe('Oracle HCM classification', () => {
           ? 'Oracle Cloud HCM reports using BI Publisher.'
           : title.includes('intern')
             ? 'Oracle Cloud HCM entry level intern on Core HR.'
-            : title,
+            : title.includes('Oracle Fusion consultant')
+              ? 'Oracle Fusion consultant for Core HR.'
+              : title,
       });
       expect(result.platform).toBe('oracle_cloud_hcm');
       expect(result.modules).toContain(moduleName);
     }
-    const cloudSecurity = classifyOracleHcm({
-      title: 'Oracle Cloud Security engineer',
-      description: 'Oracle Cloud Infrastructure security engineer.',
+    const mentionedOnly = classifyOracleHcm({
+      title: 'Java developer',
+      description: 'The team also uses Oracle Fusion.',
     });
-    expect(cloudSecurity.platform).toBe('unrelated_oracle');
+    expect(mentionedOnly.platform).toBe('unrelated_oracle');
   });
 
   test('tags modules from the supporting text and keeps required skills apart from preferred skills', () => {
