@@ -273,6 +273,7 @@ async function createApp(options = {}) {
   await EmployerSource.deleteMany({ synthetic: true });
 
   const app = express();
+  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
   const storage = options.storage || createStorage({ driver: options.storageDriver, env: process.env });
   const autoCollect = options.autoCollect !== false && process.env.NODE_ENV !== 'test';
   function kickCatalog(tenantId, force) {
