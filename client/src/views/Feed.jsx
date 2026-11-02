@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { api } from '../api';
+import { BOARD_SEARCHES, openBoardSearches, selectedModules } from '../boardSearches';
 import { EMPLOYMENT, EMPLOYER_TYPES, ENGAGEMENT, HIRING_RELATIONSHIPS, MODULES, PLATFORMS, ROLES, applicationOpenLabel, employerTypeLabel, employmentLabel, hiringRelationshipLabel, published, relationshipLabel, scheduleLabel, workplaceLabel, when, whenZone } from '../labels';
 
 const EMPTY = {
@@ -38,6 +39,7 @@ export default function Feed({ filters, setFilters, onOpen }) {
   const [searchName, setSearchName] = useState('');
   const [draft, setDraft] = useState(filters);
   const [queuedIds, setQueuedIds] = useState({});
+  const [boardSearches, setBoardSearches] = useState([]);
 
   useEffect(() => {
     setDraft(filters);
@@ -46,6 +48,7 @@ export default function Feed({ filters, setFilters, onOpen }) {
   function runSearch(event) {
     if (event) event.preventDefault();
     setFilters({ ...draft });
+    openBoardSearches(boardSearches, draft);
     document.getElementById('opportunity-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -53,6 +56,15 @@ export default function Feed({ filters, setFilters, onOpen }) {
     const included = new Set([...event.target.selectedOptions].map((option) => option.value));
     const excluded = (data.sources || []).map((source) => source.id).filter((id) => !included.has(id));
     setDraft({ ...draft, excludeSource: excluded.join(',') });
+  }
+
+  function setModules(event) {
+    const values = [...event.target.selectedOptions].map((option) => option.value).filter(Boolean);
+    setDraft({ ...draft, module: values.join(',') });
+  }
+
+  function setBoardSearchSelection(event) {
+    setBoardSearches([...event.target.selectedOptions].map((option) => option.value));
   }
 
   useEffect(() => {
@@ -140,10 +152,27 @@ export default function Feed({ filters, setFilters, onOpen }) {
         <Select label="Employer type" value={draft.employerType || ''} onChange={(employerType) => setDraft({ ...draft, employerType })} options={EMPLOYER_TYPES} />
         <Select label="Hiring relationship" value={draft.hiringRelationship || ''} onChange={(hiringRelationship) => setDraft({ ...draft, hiringRelationship })} options={HIRING_RELATIONSHIPS} />
         <Select label="Role" value={draft.roleCategory} onChange={(roleCategory) => setDraft({ ...draft, roleCategory })} options={ROLES} />
-        <label className="text-sm">Module
-          <select className="field" value={draft.module} onChange={(event) => setDraft({ ...draft, module: event.target.value })}>
-            {MODULES.map((mod) => <option key={mod || 'any'} value={mod}>{mod || 'Any module'}</option>)}
+        <label className="text-sm md:col-span-2">Modules
+          <select
+            multiple
+            className="field h-40"
+            value={selectedModules(draft.module)}
+            onChange={setModules}
+          >
+            {MODULES.filter(Boolean).map((mod) => <option key={mod} value={mod}>{mod}</option>)}
           </select>
+          <span className="mt-1 block text-xs text-[#6d665c]">Hold Ctrl and click to choose more than one module. Leave empty for any module.</span>
+        </label>
+        <label className="text-sm md:col-span-2">Also search on
+          <select
+            multiple
+            className="field h-28"
+            value={boardSearches}
+            onChange={setBoardSearchSelection}
+          >
+            {BOARD_SEARCHES.map((board) => <option key={board.id} value={board.id}>{board.name}</option>)}
+          </select>
+          <span className="mt-1 block text-xs text-[#6d665c]">Optional. Selected boards open in new tabs when you click Search. LinkedIn, Indeed, and Glassdoor are not collected into this app.</span>
         </label>
         <label className="text-sm">Workplace
           <select className="field" value={draft.workplace} onChange={(event) => setDraft({ ...draft, workplace: event.target.value })}>

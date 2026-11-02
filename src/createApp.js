@@ -37,6 +37,7 @@ const { publishedEmails, emailDraft } = require('./services/outreach');
 const { memberSite, attemptMemberLogin } = require('./services/memberLogin');
 const { createStorage, encryptSecret, decryptSecret } = require('./services/platform');
 const { createBullQueue, redisUrl } = require('./services/queue');
+const { moduleFilter } = require('./services/boardSearches');
 
 authenticator.options = { window: 1 };
 
@@ -1323,7 +1324,7 @@ function sanitizeFilters(filters) {
     q: String(source.q || '').slice(0, 80),
     employmentType: String(source.employmentType || ''),
     workplace: String(source.workplace || ''),
-    module: String(source.module || ''),
+    module: String(source.module || '').slice(0, 400),
     roleCategory: String(source.roleCategory || ''),
     platform: String(source.platform || ''),
     listingStatus: String(source.listingStatus || ''),
@@ -1371,7 +1372,8 @@ function opportunityFilter(tenantId, query) {
   if (query.platform) filter['oracle.platform'] = { $in: String(query.platform).split(',').map((item) => item.trim()).filter(Boolean) };
   if (query.employmentType) filter.employmentType = String(query.employmentType);
   if (query.workplace) filter.workplace = String(query.workplace);
-  if (query.module) filter['oracle.modules'] = String(query.module);
+  const modules = moduleFilter(query.module);
+  if (modules) filter['oracle.modules'] = modules;
   if (query.roleCategory) filter['oracle.roleCategory'] = String(query.roleCategory);
   if (query.listingStatus) filter.listingStatus = String(query.listingStatus);
   if (query.engagement) filter.engagement = String(query.engagement);
