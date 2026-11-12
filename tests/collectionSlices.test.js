@@ -8,7 +8,7 @@ function loadSlices() {
     .replace(/^export const /gm, 'const ');
   const module = { exports: {} };
   vm.runInNewContext(
-    `${source}\nmodule.exports = { SLICES, activeSlice, applySlice, clearSlice, shouldGroupByCompany, groupByCompany };`,
+    `${source}\nmodule.exports = { SLICES, activeSlice, applySlice, clearSlice, shouldGroupByCompany, groupByCompany, toggleCompanyCollapsed };`,
     { module, exports: module.exports },
   );
   return module.exports;
@@ -111,5 +111,15 @@ describe('collection summary slices', () => {
       ['Apex Consulting', ['2']],
       ['Employer not stated', ['4', '5']],
     ]);
+  });
+
+  test('minimizes one company without changing the others', () => {
+    const pico = slices.toggleCompanyCollapsed({}, 'pico');
+    const both = slices.toggleCompanyCollapsed(pico, 'apex');
+    const picoOpen = slices.toggleCompanyCollapsed(both, 'pico');
+    expect(pico).toEqual({ pico: true });
+    expect(both).toEqual({ pico: true, apex: true });
+    expect(picoOpen).toEqual({ pico: false, apex: true });
+    expect(slices.toggleCompanyCollapsed({ pico: true }, '  ')).toEqual({ pico: true });
   });
 });
