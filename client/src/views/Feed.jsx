@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { Check, ExternalLink } from 'lucide-react';
 import { api } from '../api';
 import { BOARD_SEARCHES, openBoardSearches, selectedModules } from '../boardSearches';
+import { activeSlice, applySlice, clearSlice, groupByCompany, shouldGroupByCompany, SLICES } from '../collectionSlices';
 import { EMPLOYMENT, EMPLOYER_TYPES, ENGAGEMENT, HIRING_RELATIONSHIPS, MODULES, PLATFORMS, ROLES, applicationOpenLabel, employerTypeLabel, employmentLabel, hiringRelationshipLabel, published, relationshipLabel, scheduleLabel, workplaceLabel, when, whenZone } from '../labels';
 
 const EMPTY = {
@@ -122,6 +123,14 @@ export default function Feed({ filters, setFilters, onOpen }) {
     await api('/api/saved-searches', { method: 'POST', body: JSON.stringify({ name: searchName, filters: draft }) });
     setSearchName('');
   }
+
+  function commitFilters(next) {
+    setDraft(next);
+    setFilters(next);
+  }
+
+  const selectedSlice = activeSlice(filters);
+  const groupCompanies = shouldGroupByCompany(filters);
 
   return (
     <div className="space-y-5">
@@ -261,20 +270,33 @@ export default function Feed({ filters, setFilters, onOpen }) {
           <p>{data.coverage.equation}</p>
           <p>The {data.coverage.boards} configured sources are employer career boards and public searches. They use {data.coverage.adapters} adapters. That is monitored-source coverage, not the whole job market.</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <p className="metric"><strong>{data.coverage.oracleCloudHcm}</strong><span>Oracle Cloud HCM</span></p>
-            <p className="metric"><strong>{data.coverage.mixed}</strong><span>Mixed Cloud with EBS or PeopleSoft</span></p>
-            <p className="metric"><strong>{data.coverage.endUserEmployers}</strong><span>End-user employers</span></p>
-            <p className="metric"><strong>{data.coverage.consultingEmployers}</strong><span>Consulting employers</span></p>
-            <p className="metric"><strong>{data.coverage.schedule && data.coverage.schedule.full_time}</strong><span>Full-time</span></p>
-            <p className="metric"><strong>{data.coverage.schedule && data.coverage.schedule.part_time}</strong><span>Part-time</span></p>
-            <p className="metric"><strong>{data.coverage.relationship && data.coverage.relationship.contractor}</strong><span>Contract relationship</span></p>
-            <p className="metric"><strong>{data.coverage.schedule && data.coverage.schedule.unknown}</strong><span>Schedule not stated</span></p>
-            <p className="metric"><strong>{data.coverage.geography && data.coverage.geography.usa}</strong><span>United States scope</span></p>
-            <p className="metric"><strong>{data.coverage.geography && data.coverage.geography.other}</strong><span>Other countries</span></p>
+            {SLICES.map((slice) => {
+              const selected = selectedSlice && selectedSlice.id === slice.id;
+              const count = slice.count(data.coverage);
+              return (
+                <button
+                  key={slice.id}
+                  type="button"
+                  className="metric"
+                  aria-pressed={selected}
+                  onClick={() => commitFilters(applySlice(filters, slice.id))}
+                >
+                  {selected && <Check className="absolute right-3 top-3 text-copper" size={16} aria-hidden="true" />}
+                  <strong>{count == null ? 0 : count}</strong>
+                  <span>{slice.label}</span>
+                </button>
+              );
+            })}
             <p className="metric"><strong>{data.coverage.checked}</strong><span>Boards checked</span></p>
             <p className="metric"><strong>{data.coverage.unsupported}</strong><span>Unsupported. Failing: {data.coverage.failing}</span></p>
             <p className="metric sm:col-span-2"><strong className="!text-xl">{whenZone(data.coverage.lastCollectionAt)}</strong><span>Last successful collection</span></p>
           </div>
+          {selectedSlice && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-ink">Showing {selectedSlice.label}.</p>
+              <button className="btn-quiet" type="button" onClick={() => commitFilters(clearSlice(filters))}>Clear filter</button>
+            </div>
+          )}
         </div>
       )}
       <div id="opportunity-results" className="space-y-4">
@@ -287,81 +309,124 @@ export default function Feed({ filters, setFilters, onOpen }) {
             : 'No listings found across the monitored sources yet.'}
         </div>
       )}
-      <div className="space-y-3">
-        {data.opportunities.map((opportunity) => (
-          <article key={opportunity.id} className="panel p-5">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex min-w-0 gap-4">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-forest font-display text-xl text-[#f7f1e6]">
-                  {(opportunity.employerName || '?').trim().slice(0, 1).toUpperCase()}
+      {data.opportunities.length > 0 && (groupCompanies ? (
+        <div className="space-y-8">
+          {groupByCompany(data.opportunities).map((group, index) => (
+            <section key={group.key} className="space-y-3" aria-labelledby={`employer-group-${index}`}>
+              <h3 id={`employer-group-${index}`} className="flex items-center gap-3 px-1">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest font-display text-lg text-[#f7f1e6]">
+                  {(group.name || '?').trim().slice(0, 1).toUpperCase()}
                 </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-copper">{opportunity.employerName}</p>
-                  <button className="mt-1 text-left text-2xl text-ink hover:text-copper" onClick={() => onOpen(opportunity.id)}>{opportunity.title}</button>
-                  <p className="mt-1 text-sm text-[#6d665c]">{opportunity.sourceName || 'Source name not stored'}{opportunity.adapterType ? ` · ${opportunity.adapterType}` : ''}</p>
-                </div>
+                <span className="min-w-0 break-words text-xl text-ink">{group.name}</span>
+                <span className="ml-auto shrink-0 font-sans text-sm font-normal text-[#6d665c]">
+                  {group.jobs.length === 1 ? '1 listing' : `${group.jobs.length} listings`}
+                </span>
+              </h3>
+              <div className="space-y-3 border-l-2 border-line pl-3 sm:pl-4">
+                {group.jobs.map((opportunity) => (
+                  <OpportunityCard
+                    key={opportunity.id}
+                    opportunity={opportunity}
+                    queued={!!queuedIds[opportunity.id]}
+                    onOpen={onOpen}
+                    onQueued={() => setQueuedIds((current) => ({ ...current, [opportunity.id]: true }))}
+                    onError={setError}
+                  />
+                ))}
               </div>
-              <div className="text-right text-sm text-[#5c564e]">
-                {opportunity.isNew && <p className="mb-1 inline-flex rounded-full bg-[#f8e7c8] px-2.5 py-1 text-xs font-semibold text-[#8a4b12]">New</p>}
-                <p><span className="capitalize">{opportunity.listingStatus}</span> · {applicationOpenLabel(opportunity.applicationOpen)}</p>
-                <p className="text-xs text-[#6d665c]">Verified {when(opportunity.lastVerifiedAt || opportunity.lastCheckedAt)}</p>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className="chip">{employerTypeLabel(opportunity.employerType)}</span>
-              <span className="chip">{hiringRelationshipLabel(opportunity.hiringRelationship)}</span>
-              <span className="chip">{relationshipLabel(opportunity.employmentRelationship)} · {scheduleLabel(opportunity.workSchedule)}</span>
-              <span className="chip">{workplaceLabel(opportunity.workplace)}</span>
-              <span className="chip">{opportunity.locations.map((location) => location.label).join(', ') || 'Location not published'}</span>
-              <span className="chip">Modules: {(opportunity.oracle && opportunity.oracle.modules || []).join(', ') || 'Not tagged'}</span>
-            </div>
-            <dl className="mt-4 grid gap-2 text-sm text-[#5c564e] sm:grid-cols-3">
-              <div><dt className="text-xs uppercase tracking-wide text-[#8a8378]">Published</dt><dd>{published(opportunity)}</dd></div>
-              <div><dt className="text-xs uppercase tracking-wide text-[#8a8378]">First discovered</dt><dd>{when(opportunity.firstSeenAt)}</dd></div>
-              <div><dt className="text-xs uppercase tracking-wide text-[#8a8378]">Last verified</dt><dd>{when(opportunity.lastCheckedAt)}</dd></div>
-            </dl>
-            {opportunity.listingStatusEvidence && opportunity.listingStatusEvidence.note && (
-              <p className="mt-2 text-xs text-[#6d665c]">{opportunity.listingStatusEvidence.note}</p>
-            )}
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
-              <button className="btn-quiet" type="button" onClick={() => onOpen(opportunity.id)}>Details</button>
-              {opportunity.canonicalUrl ? (
-                <a className="btn" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
-                  Open original posting <ExternalLink size={14} />
-                </a>
-              ) : <span className="text-sm text-[#6d665c]">Original link not published</span>}
-              {opportunity.canonicalUrl && (
-                <button
-                  className="btn-quiet"
-                  type="button"
-                  onClick={() => api('/api/apply-queue', { method: 'POST', body: JSON.stringify({ opportunityId: opportunity.id }) })
-                    .then(() => setQueuedIds((current) => ({ ...current, [opportunity.id]: true })))
-                    .catch((err) => setError(err.message))}
-                >
-                  {queuedIds[opportunity.id] ? 'In apply queue' : 'Add to apply queue'}
-                </button>
-              )}
-              {opportunity.publishedEmails && opportunity.publishedEmails.length > 0 && (
-                <button
-                  className="btn-quiet"
-                  type="button"
-                  onClick={() => api(`/api/opportunities/${opportunity.id}/email-draft`, { method: 'POST', body: '{}' })
-                    .then((body) => {
-                      const link = document.createElement('a');
-                      link.href = body.mailto;
-                      link.click();
-                    })
-                    .catch((err) => setError(err.message))}
-                >
-                  Open email draft
-                </button>
-              )}
-            </div>
-          </article>
-        ))}
-      </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {data.opportunities.map((opportunity) => (
+            <OpportunityCard
+              key={opportunity.id}
+              opportunity={opportunity}
+              queued={!!queuedIds[opportunity.id]}
+              onOpen={onOpen}
+              onQueued={() => setQueuedIds((current) => ({ ...current, [opportunity.id]: true }))}
+              onError={setError}
+            />
+          ))}
+        </div>
+      ))}
       </div>
     </div>
+  );
+}
+
+function OpportunityCard({ opportunity, queued, onOpen, onQueued, onError }) {
+  return (
+    <article className="panel p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 gap-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-forest font-display text-xl text-[#f7f1e6]">
+            {(opportunity.employerName || '?').trim().slice(0, 1).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-copper">{opportunity.employerName}</p>
+            <button type="button" className="mt-1 text-left text-2xl text-ink hover:text-copper" onClick={() => onOpen(opportunity.id)}>{opportunity.title}</button>
+            <p className="mt-1 text-sm text-[#6d665c]">{opportunity.sourceName || 'Source name not stored'}{opportunity.adapterType ? ` · ${opportunity.adapterType}` : ''}</p>
+          </div>
+        </div>
+        <div className="text-right text-sm text-[#5c564e]">
+          {opportunity.isNew && <p className="mb-1 inline-flex rounded-full bg-[#f8e7c8] px-2.5 py-1 text-xs font-semibold text-[#8a4b12]">New</p>}
+          <p><span className="capitalize">{opportunity.listingStatus}</span> · {applicationOpenLabel(opportunity.applicationOpen)}</p>
+          <p className="text-xs text-[#6d665c]">Verified {when(opportunity.lastVerifiedAt || opportunity.lastCheckedAt)}</p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className="chip">{employerTypeLabel(opportunity.employerType)}</span>
+        <span className="chip">{hiringRelationshipLabel(opportunity.hiringRelationship)}</span>
+        <span className="chip">{relationshipLabel(opportunity.employmentRelationship)} · {scheduleLabel(opportunity.workSchedule)}</span>
+        <span className="chip">{workplaceLabel(opportunity.workplace)}</span>
+        <span className="chip">{opportunity.locations.map((location) => location.label).join(', ') || 'Location not published'}</span>
+        <span className="chip">Modules: {(opportunity.oracle && opportunity.oracle.modules || []).join(', ') || 'Not tagged'}</span>
+      </div>
+      <dl className="mt-4 grid gap-2 text-sm text-[#5c564e] sm:grid-cols-3">
+        <div><dt className="text-xs uppercase tracking-wide text-[#8a8378]">Published</dt><dd>{published(opportunity)}</dd></div>
+        <div><dt className="text-xs uppercase tracking-wide text-[#8a8378]">First discovered</dt><dd>{when(opportunity.firstSeenAt)}</dd></div>
+        <div><dt className="text-xs uppercase tracking-wide text-[#8a8378]">Last verified</dt><dd>{when(opportunity.lastCheckedAt)}</dd></div>
+      </dl>
+      {opportunity.listingStatusEvidence && opportunity.listingStatusEvidence.note && (
+        <p className="mt-2 text-xs text-[#6d665c]">{opportunity.listingStatusEvidence.note}</p>
+      )}
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+        <button className="btn-quiet" type="button" onClick={() => onOpen(opportunity.id)}>Details</button>
+        {opportunity.canonicalUrl ? (
+          <a className="btn" href={opportunity.canonicalUrl} target="_blank" rel="noreferrer">
+            Open original posting <ExternalLink size={14} />
+          </a>
+        ) : <span className="text-sm text-[#6d665c]">Original link not published</span>}
+        {opportunity.canonicalUrl && (
+          <button
+            className="btn-quiet"
+            type="button"
+            onClick={() => api('/api/apply-queue', { method: 'POST', body: JSON.stringify({ opportunityId: opportunity.id }) })
+              .then(() => onQueued())
+              .catch((err) => onError(err.message))}
+          >
+            {queued ? 'In apply queue' : 'Add to apply queue'}
+          </button>
+        )}
+        {opportunity.publishedEmails && opportunity.publishedEmails.length > 0 && (
+          <button
+            className="btn-quiet"
+            type="button"
+            onClick={() => api(`/api/opportunities/${opportunity.id}/email-draft`, { method: 'POST', body: '{}' })
+              .then((body) => {
+                const link = document.createElement('a');
+                link.href = body.mailto;
+                link.click();
+              })
+              .catch((err) => onError(err.message))}
+          >
+            Open email draft
+          </button>
+        )}
+      </div>
+    </article>
   );
 }
 
