@@ -22,12 +22,10 @@ const END_USERS = [
 describe('direct client sources', () => {
   const byName = new Map(PUBLIC_BOARDS.map((board) => [board.name, board]));
 
-  test('registers Oracle Cloud HCM customers as unsupported end-user boards', () => {
+  test('keeps Oracle Cloud HCM customers as end-user boards without invented listings', () => {
     for (const name of END_USERS) {
       const board = byName.get(name);
       expect(board).toBeTruthy();
-      expect(board.adapterType).toBe('public-search');
-      expect(board.status).toBe('unsupported');
       expect(board.hiringContext).toBe('direct_client');
       expect(board.employerType).toBe('end_user');
       expect(board.careerSiteUrl).toMatch(/^https:\/\//);

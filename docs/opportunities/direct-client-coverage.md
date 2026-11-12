@@ -31,7 +31,7 @@ Pico is the only catalogued end-user board. Dice “Direct Hire” sets hiring r
 - Deloitte, EY, and PwC: the public search page or its linked feed for an Oracle HCM query. PwC stays partial when the page count exceeds the embedded jobs. KPMG and Accenture corporate are unsupported.
 - Ashby and SmartRecruiters adapters exist for boards whose identifier was read from a published URL. The Ashby response is one published list. SmartRecruiters uses `offset` until a short page or `totalFound`. Detail is fetched when the list omits the description. Consulting boards found on those platforms were not auto-enabled.
 - Public JobPosting HTML is read only from structured data already in the page. `rel=next` stays on the same host. That adapter does not close listings, because one page is not a complete career-site snapshot.
-- Oracle `recruitingCEJobRequisitions` is documented as internal use only (`https://docs.oracle.com/en/cloud/saas/human-resources/farws/api-recruiting-ce-job-requisitions.html`). It is not called. Workday CXS is not called.
+- Oracle Candidate Experience public search reads `recruitingCEJobRequisitions` with `findReqs` only when the career URL names a `*.fa.*.oraclecloud.com` host and a site number such as `CX_1`. Oracle’s REST reference marks that resource as internal use. The adapter uses the unauthenticated search the public career page uses, stops on HTTP 401 or 403, and does not guess a site number. Workday CXS is not called.
 
 ## Relevance
 

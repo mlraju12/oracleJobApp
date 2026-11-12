@@ -45,24 +45,71 @@ function unsupportedEndUser(board) {
   };
 }
 
+function oracleCareerBoard(board) {
+  const hiringContext = board.hiringContext || 'direct_client';
+  return {
+    key: board.key,
+    name: board.name,
+    domain: board.domain,
+    careerSiteUrl: board.careerSiteUrl,
+    atsProvider: 'oracle-candidate-experience',
+    adapterType: 'oracle-candidate-experience',
+    ownership: 'direct_employer',
+    hiringContext,
+    employerType: board.employerType || (hiringContext === 'consulting_firm' ? 'consulting_firm' : 'end_user'),
+    hiringRelationship: board.hiringRelationship || 'own_team',
+    classificationEvidence: board.classificationEvidence
+      || `Oracle published ${board.name} as a Fusion Cloud HCM customer at ${board.evidenceUrl}. The career page is the organization’s own. Checked ${CUSTOMER_CHECKED}. No job rows are stored in the catalog.`,
+    accessMethod: 'public_api',
+    accessDocumentationUrl: 'https://docs.oracle.com/en/cloud/saas/human-resources/farws/op-recruitingcejobrequisitions-get.html',
+    accessNotes: board.accessNotes,
+    termsReviewStatus: 'public_read_documented',
+    termsNotes: 'The public Candidate Experience search is an unauthenticated GET of the requisition list shown on the career site. Reviewed 2026-11-12. A denied response is not bypassed. Application POST is not used.',
+    adapterConfig: {
+      apiHost: board.apiHost,
+      siteNumber: board.siteNumber,
+      siteUrl: board.siteUrl,
+      minIntervalMs: 400,
+    },
+  };
+}
+
+function catalogNeedsSync(source, board) {
+  const nextStatus = board.status || 'enabled';
+  if (source.adapterType !== board.adapterType) return true;
+  if (source.status === 'unsupported' && nextStatus !== 'unsupported') return true;
+  const current = source.adapterConfig || {};
+  const next = board.adapterConfig || {};
+  if (next.apiHost && current.apiHost !== next.apiHost) return true;
+  if (next.siteNumber && current.siteNumber !== next.siteNumber) return true;
+  if (next.siteUrl && current.siteUrl !== next.siteUrl) return true;
+  return false;
+}
+
 const END_USER_CUSTOMERS = [
   {
     key: 'public:vanderbilt',
     name: 'Vanderbilt University',
     domain: 'vanderbilt.edu',
     provider: 'vanderbilt',
-    careerSiteUrl: 'https://www.vanderbilt.edu/work-at-vanderbilt/',
+    apiHost: 'ecsr.fa.us2.oraclecloud.com',
+    siteNumber: 'CX_1',
+    siteUrl: 'https://ecsr.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
+    careerSiteUrl: 'https://ecsr.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
     evidenceUrl: 'https://www.oracle.com/customers/vanderbilt-university/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. The careers page links to an Oracle Candidate Experience site, CX_1 on ecsr.fa.us2.oraclecloud.com, and did not include JobPosting data. This app does not read that candidate-experience job list. No Greenhouse, Lever, Ashby, or SmartRecruiters board was found.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. https://www.vanderbilt.edu/work-at-vanderbilt/ links to Candidate Experience site CX_1 on ecsr.fa.us2.oraclecloud.com. The public search returned 124 requisitions. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:baylor-university',
     name: 'Baylor University',
     domain: 'baylor.edu',
     provider: 'baylor-university',
-    careerSiteUrl: 'https://ejof.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/',
+    apiHost: 'ejof.fa.us2.oraclecloud.com',
+    siteNumber: 'CX',
+    siteUrl: 'https://ejof.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX',
+    careerSiteUrl: 'https://ejof.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX',
     evidenceUrl: 'https://www.oracle.com/customers/baylor-university-cloud-erp-and-hcm/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. https://jobs.baylor.edu redirected to this Oracle Candidate Experience site, titled Baylor Careers. The HTML did not include JobPosting data. This is Baylor University, not a health system. No Greenhouse, Lever, Ashby, or SmartRecruiters board was found.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. https://jobs.baylor.edu redirected to Candidate Experience site CX, titled Baylor Careers. The public search returned 32 requisitions. This is Baylor University, not a health system. Site CX_1 on the same host is Student Employment and is not collected. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:northwell-health',
@@ -71,7 +118,7 @@ const END_USER_CUSTOMERS = [
     provider: 'northwell-health',
     careerSiteUrl: 'https://jobs.northwell.edu/',
     evidenceUrl: 'https://www.oracle.com/customers/northwell-health-cloud-hcm/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. https://jobs.northwell.edu/ and its RSS feed returned HTTP 200. The feed items were career stories, not a job list, and the HTML did not include JobPosting data. No Greenhouse, Lever, Ashby, or SmartRecruiters board was found.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. https://jobs.northwell.edu/ returned HTTP 200 and is not an Oracle Candidate Experience host, so the Candidate Experience reader does not apply. Its RSS items were career stories, not a job list. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:morrisons',
@@ -96,54 +143,72 @@ const END_USER_CUSTOMERS = [
     name: 'Verisk',
     domain: 'verisk.com',
     provider: 'verisk',
-    careerSiteUrl: 'https://www.verisk.com/company/careers/',
+    apiHost: 'fa-ewmy-saasfaprod1.fa.ocs.oraclecloud.com',
+    siteNumber: 'CX_1',
+    siteUrl: 'https://fa-ewmy-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
+    careerSiteUrl: 'https://fa-ewmy-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
     evidenceUrl: 'https://www.oracle.com/customers/verisk/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. The careers page links to an Oracle Candidate Experience site, CX_1 on fa-ewmy-saasfaprod1.fa.ocs.oraclecloud.com, and did not include JobPosting data. This app does not read that candidate-experience job list.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. The Verisk careers page links to Candidate Experience site CX_1, named Verisk Careers. The public search returned 162 requisitions. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:jungbunzlauer',
     name: 'Jungbunzlauer',
     domain: 'jungbunzlauer.com',
     provider: 'jungbunzlauer',
-    careerSiteUrl: 'https://www.jungbunzlauer.com/careers/',
+    apiHost: 'iabuas.fa.ocs.oraclecloud.com',
+    siteNumber: 'CX_1',
+    siteUrl: 'https://iabuas.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
+    careerSiteUrl: 'https://iabuas.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
     evidenceUrl: 'https://www.oracle.com/customers/jungbunzlauer/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. The careers page links to an Oracle Candidate Experience site, CX_1 on iabuas.fa.ocs.oraclecloud.com, and did not include JobPosting data. This app does not read that candidate-experience job list.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. The careers page links to Candidate Experience site CX_1, named Jungbunzlauer. The public search returned 19 requisitions. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:arqiva',
     name: 'Arqiva',
     domain: 'arqiva.com',
     provider: 'arqiva',
-    careerSiteUrl: 'https://www.arqiva.com/careers/careers',
+    apiHost: 'ehik.fa.em3.oraclecloud.com',
+    siteNumber: 'CX',
+    siteUrl: 'https://ehik.fa.em3.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX',
+    careerSiteUrl: 'https://ehik.fa.em3.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX',
     evidenceUrl: 'https://www.oracle.com/customers/arqiva/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. The careers page links to an Oracle Candidate Experience jobs page on ehik.fa.em3.oraclecloud.com and did not include JobPosting data. This app does not read that candidate-experience job list.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. https://www.arqiva.com/careers/careers links to Candidate Experience site CX. The public search returned 17 requisitions. Site CX_1 on the same host is the contingent portal and returned no requisitions; it is not collected. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:wmata',
     name: 'WMATA',
     domain: 'wmata.com',
     provider: 'wmata',
-    careerSiteUrl: 'https://www.wmata.com/about/careers.html',
+    apiHost: 'ibpbjb.fa.ocs.oraclecloud.com',
+    siteNumber: 'CX_2011',
+    siteUrl: 'https://ibpbjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2011',
+    careerSiteUrl: 'https://ibpbjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2011',
     evidenceUrl: 'https://www.oracle.com/news/announcement/ai-world-wmata-keeps-its-workforce-moving-with-oracle-fusion-applications-2026-10-26/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. The careers page links to an Oracle Candidate Experience site, CX_2011 on ibpbjb.fa.ocs.oraclecloud.com, and did not include JobPosting data. This app does not read that candidate-experience job list.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. https://www.wmata.com/about/careers.html links to Candidate Experience site CX_2011. The public search returned 11 requisitions. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:bgis',
     name: 'BGIS',
     domain: 'bgis.com',
     provider: 'bgis',
-    careerSiteUrl: 'https://www.bgis.com/careers/',
+    apiHost: 'fa-evcg-saasfaprod1.fa.ocs.oraclecloud.com',
+    siteNumber: 'CX_1',
+    siteUrl: 'https://fa-evcg-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
+    careerSiteUrl: 'https://fa-evcg-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
     evidenceUrl: 'https://www.oracle.com/customers/bgis/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. The careers page links to an Oracle Candidate Experience site, CX_1 on fa-evcg-saasfaprod1.fa.ocs.oraclecloud.com, and did not include JobPosting data. BGIS is the facilities employer. This app does not read that candidate-experience job list.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. The careers page links to Candidate Experience site CX_1, named BGIS Careers. The public search returned 753 requisitions. BGIS is the facilities employer. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:nokia',
     name: 'Nokia',
     domain: 'nokia.com',
     provider: 'nokia',
+    apiHost: 'fa-evmr-saasfaprod1.fa.ocs.oraclecloud.com',
+    siteNumber: 'CX_1',
+    siteUrl: 'https://jobs.nokia.com/en/sites/CX_1',
     careerSiteUrl: 'https://jobs.nokia.com/en/sites/CX_1',
     evidenceUrl: 'https://www.oracle.com/customers/nokia/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. jobs.nokia.com is an Oracle Candidate Experience site, CX_1 on fa-evmr-saasfaprod1.fa.ocs.oraclecloud.com. The HTML did not include JobPosting data. This app does not read that candidate-experience job list.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. jobs.nokia.com/en/sites/CX_1 is Candidate Experience site CX_1, named Nokia, served from fa-evmr-saasfaprod1.fa.ocs.oraclecloud.com. The public search returned 587 requisitions. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:eon',
@@ -162,7 +227,7 @@ const END_USER_CUSTOMERS = [
     provider: 'university-of-windsor',
     careerSiteUrl: 'https://www.uwindsor.ca/humanresources/',
     evidenceUrl: 'https://www.oracle.com/customers/university-of-windsor/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. The human resources page returned HTTP 200 and linked efhc.fa.ca2.oraclecloud.com. A jobs path on the university site returned HTTP 404. The HTML did not include a job list.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. https://www.uwindsor.ca/humanresources/ links to efhc.fa.ca2.oraclecloud.com and does not name a Candidate Experience site number. A site number that is not on that page can return a different site, so the reader was not used. The source stays unsupported.`,
   },
   {
     key: 'public:invocare',
@@ -178,9 +243,12 @@ const END_USER_CUSTOMERS = [
     name: 'OSU Medical Center',
     domain: 'okstate.edu',
     provider: 'osu-medical-center',
-    careerSiteUrl: 'https://osumc-iborjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs',
+    apiHost: 'osumc-iborjb.fa.ocs.oraclecloud.com',
+    siteNumber: 'CX_1',
+    siteUrl: 'https://osumc-iborjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
+    careerSiteUrl: 'https://osumc-iborjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
     evidenceUrl: 'https://www.oracle.com/customers/osu-medical-center/',
-    accessNotes: `Checked ${CUSTOMER_CHECKED}. The career site returned HTTP 200, titled OSU Medical Center Career Site, and is an Oracle Candidate Experience page. The HTML did not include JobPosting data. This app does not read that candidate-experience job list.`,
+    accessNotes: `Checked ${CUSTOMER_CHECKED}. The career site is Candidate Experience site CX_1, titled OSU Medical Center Career Site. The public search returned 158 requisitions. No job rows are stored in the catalog.`,
   },
   {
     key: 'public:norfolk-county-council',
@@ -698,38 +766,30 @@ const PUBLIC_BOARDS = [
     termsNotes: 'Unsupported until the career pages publish a job feed this app can read. Apply on Infovity’s site.',
     adapterConfig: { provider: 'infovity' },
   },
-  {
+  oracleCareerBoard({
     key: 'public:argano',
     name: 'Argano',
     domain: 'argano.com',
-    careerSiteUrl: 'https://argano.com/careers/',
-    atsProvider: 'oracle-cloud-hcm',
-    adapterType: 'public-search',
-    ownership: 'direct_employer',
     hiringContext: 'consulting_firm',
-    status: 'unsupported',
-    accessMethod: 'public_page',
-    accessDocumentationUrl: 'https://fa-eyau-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs',
-    accessNotes: 'Checked 2026-11-12. https://argano.com/careers/ links to an Oracle Cloud Candidate Experience site and did not include JobPosting data. This app has no adapter for that candidate-experience job list. No Greenhouse, Lever, Ashby, or SmartRecruiters board for Argano returned a job list. No listings are invented.',
-    termsNotes: 'Unsupported until the Oracle candidate site is a documented public feed. Apply on Argano’s site.',
-    adapterConfig: { provider: 'argano' },
-  },
-  {
+    apiHost: 'fa-eyau-saasfaprod1.fa.ocs.oraclecloud.com',
+    siteNumber: 'CX_1',
+    siteUrl: 'https://fa-eyau-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
+    careerSiteUrl: 'https://fa-eyau-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1',
+    classificationEvidence: 'https://argano.com/careers/ links to Candidate Experience site CX_1, named Argano. Checked 2026-11-12. Argano is the consulting firm. No job rows are stored in the catalog.',
+    accessNotes: 'Checked 2026-11-12. https://argano.com/careers/ links to Candidate Experience site CX_1, named Argano. The public search returned 89 requisitions. No job rows are stored in the catalog.',
+  }),
+  oracleCareerBoard({
     key: 'public:inoapps',
     name: 'Inoapps',
     domain: 'inoapps.com',
-    careerSiteUrl: 'https://www.inoapps.com/',
-    atsProvider: 'oracle-cloud-hcm',
-    adapterType: 'public-search',
-    ownership: 'direct_employer',
     hiringContext: 'consulting_firm',
-    status: 'unsupported',
-    accessMethod: 'public_page',
-    accessDocumentationUrl: 'https://hza.fa.us1.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2024',
-    accessNotes: 'Checked 2026-11-12. The Inoapps site, the firm written as InnoApps, links to an Oracle Cloud Candidate Experience board and has no /careers page. This app has no adapter for that candidate-experience job list. No Greenhouse, Lever, Ashby, or SmartRecruiters board for Inoapps returned a job list. No listings are invented.',
-    termsNotes: 'Unsupported until the Oracle candidate site is a documented public feed. Apply on the Inoapps site.',
-    adapterConfig: { provider: 'inoapps' },
-  },
+    apiHost: 'hza.fa.us1.oraclecloud.com',
+    siteNumber: 'CX_2024',
+    siteUrl: 'https://hza.fa.us1.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2024',
+    careerSiteUrl: 'https://hza.fa.us1.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2024',
+    classificationEvidence: 'The Inoapps site, the firm written as InnoApps, links to Candidate Experience site CX_2024, named Inoapps Careers. Checked 2026-11-12. Inoapps is the consulting firm. Site CX_1 on the same host is a second career site and is not the published CX_2024 board. No job rows are stored in the catalog.',
+    accessNotes: 'Checked 2026-11-12. The Inoapps site links to Candidate Experience site CX_2024, named Inoapps Careers. The public search returned 20 requisitions. No job rows are stored in the catalog.',
+  }),
   {
     key: 'public:huron',
     name: 'Huron',
@@ -986,7 +1046,7 @@ const PUBLIC_BOARDS = [
     termsNotes: 'Unsupported until a public job feed is documented. Apply on the Apps Associates site.',
     adapterConfig: { provider: 'apps-associates' },
   },
-  ...END_USER_CUSTOMERS.map(unsupportedEndUser),
+  ...END_USER_CUSTOMERS.map((board) => (board.apiHost ? oracleCareerBoard(board) : unsupportedEndUser(board))),
 ];
 
 const running = new Set();
@@ -1028,6 +1088,26 @@ async function ensurePublicCatalog(tenantId) {
     let source = await EmployerSource.findOne({ tenantId, catalogKey: board.key });
     if (!source) {
       source = await EmployerSource.create(boardRecord(tenantId, board));
+    } else if (catalogNeedsSync(source, board)) {
+      const record = boardRecord(tenantId, board);
+      const enabling = source.status === 'unsupported' && record.status === 'enabled';
+      source.adapterType = record.adapterType;
+      source.status = record.status;
+      source.adapterConfig = record.adapterConfig;
+      source.careerSiteUrl = record.careerSiteUrl;
+      source.atsProvider = record.atsProvider;
+      source.accessMethod = record.accessMethod;
+      source.accessDocumentationUrl = record.accessDocumentationUrl;
+      source.accessNotes = record.accessNotes;
+      source.termsNotes = record.termsNotes;
+      source.termsReviewStatus = record.termsReviewStatus;
+      source.hiringContext = record.hiringContext;
+      source.employerType = record.employerType;
+      source.hiringRelationship = record.hiringRelationship;
+      source.classificationEvidence = record.classificationEvidence;
+      if (enabling) source.nextAttemptAt = null;
+      source.markModified('adapterConfig');
+      await source.save();
     } else if (board.adapterConfig) {
       const current = source.adapterConfig || {};
       const next = board.adapterConfig;
@@ -1068,7 +1148,7 @@ async function startCatalogRefresh(tenantId, deps, options = {}) {
     const extras = await EmployerSource.find({
       tenantId,
       status: { $in: ['enabled', 'failing'] },
-      adapterType: { $in: ['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-search', 'dice-mcp', 'public-job-feed'] },
+      adapterType: { $in: ['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-search', 'dice-mcp', 'public-job-feed', 'oracle-candidate-experience'] },
     });
     for (const extra of extras) {
       if (known.has(String(extra._id))) continue;
@@ -1113,6 +1193,7 @@ async function startCatalogRefresh(tenantId, deps, options = {}) {
 
 module.exports = {
   PUBLIC_BOARDS,
+  catalogNeedsSync,
   ensurePublicCatalog,
   startCatalogRefresh,
   catalogRefreshRunning,
