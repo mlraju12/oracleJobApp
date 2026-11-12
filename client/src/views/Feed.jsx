@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { api } from '../api';
 import { BOARD_SEARCHES, openBoardSearches, selectedModules, toggleBoardSelection } from '../boardSearches';
-import { activeSlice, applySlice, clearSlice, groupByCompany, shouldGroupByCompany, SLICES, toggleCompanyCollapsed } from '../collectionSlices';
+import { activeSlice, applySlice, clearSlice, companyGroupCollapsed, groupByCompany, shouldGroupByCompany, SLICES, toggleCompanyCollapsed } from '../collectionSlices';
 import { EMPLOYMENT, EMPLOYER_TYPES, ENGAGEMENT, HIRING_RELATIONSHIPS, MODULES, PLATFORMS, ROLES, applicationOpenLabel, employerTypeLabel, employmentLabel, hiringRelationshipLabel, published, relationshipLabel, scheduleLabel, workplaceLabel, when, whenZone } from '../labels';
 
 const EMPTY = {
@@ -321,7 +321,7 @@ export default function Feed({ filters, setFilters, onOpen }) {
       {data.opportunities.length > 0 && (groupCompanies ? (
         <div className="space-y-8">
           {groupByCompany(data.opportunities).map((group, index) => {
-            const collapsed = !!collapsedCompanies[group.key];
+            const collapsed = companyGroupCollapsed(collapsedCompanies, group.key);
             const jobsId = `employer-jobs-${index}`;
             return (
               <section key={group.key} className="space-y-3" aria-labelledby={`employer-group-${index}`}>

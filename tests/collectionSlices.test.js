@@ -8,7 +8,7 @@ function loadSlices() {
     .replace(/^export const /gm, 'const ');
   const module = { exports: {} };
   vm.runInNewContext(
-    `${source}\nmodule.exports = { SLICES, activeSlice, applySlice, clearSlice, shouldGroupByCompany, groupByCompany, toggleCompanyCollapsed };`,
+    `${source}\nmodule.exports = { SLICES, activeSlice, applySlice, clearSlice, shouldGroupByCompany, groupByCompany, companyGroupCollapsed, toggleCompanyCollapsed };`,
     { module, exports: module.exports },
   );
   return module.exports;
@@ -113,13 +113,17 @@ describe('collection summary slices', () => {
     ]);
   });
 
-  test('minimizes one company without changing the others', () => {
+  test('company groups start collapsed and each one expands on its own', () => {
+    expect(slices.companyGroupCollapsed({}, 'pico')).toBe(true);
+    expect(slices.companyGroupCollapsed({}, 'apex')).toBe(true);
     const pico = slices.toggleCompanyCollapsed({}, 'pico');
     const both = slices.toggleCompanyCollapsed(pico, 'apex');
-    const picoOpen = slices.toggleCompanyCollapsed(both, 'pico');
-    expect(pico).toEqual({ pico: true });
-    expect(both).toEqual({ pico: true, apex: true });
-    expect(picoOpen).toEqual({ pico: false, apex: true });
-    expect(slices.toggleCompanyCollapsed({ pico: true }, '  ')).toEqual({ pico: true });
+    const picoClosed = slices.toggleCompanyCollapsed(both, 'pico');
+    expect(slices.companyGroupCollapsed(pico, 'pico')).toBe(false);
+    expect(slices.companyGroupCollapsed(pico, 'apex')).toBe(true);
+    expect(slices.companyGroupCollapsed(both, 'apex')).toBe(false);
+    expect(slices.companyGroupCollapsed(picoClosed, 'pico')).toBe(true);
+    expect(slices.companyGroupCollapsed(picoClosed, 'apex')).toBe(false);
+    expect(slices.toggleCompanyCollapsed({ pico: false }, '  ')).toEqual({ pico: false });
   });
 });
