@@ -43,6 +43,16 @@ export function searchTerms(q, modules) {
   return parts.join(' ');
 }
 
+export function toggleBoardSelection(selected, id) {
+  const current = (Array.isArray(selected) ? selected : [])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+  const value = String(id || '').trim();
+  if (!value || !BOARD_SEARCHES.some((board) => board.id === value)) return current;
+  if (current.includes(value)) return current.filter((item) => item !== value);
+  return [...current, value];
+}
+
 export function openBoardSearches(ids, draft) {
   const wanted = new Set((ids || []).filter(Boolean));
   const modules = selectedModules(draft && draft.module);

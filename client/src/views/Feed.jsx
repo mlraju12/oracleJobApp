@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, ExternalLink } from 'lucide-react';
 import { api } from '../api';
-import { BOARD_SEARCHES, openBoardSearches, selectedModules } from '../boardSearches';
+import { BOARD_SEARCHES, openBoardSearches, selectedModules, toggleBoardSelection } from '../boardSearches';
 import { activeSlice, applySlice, clearSlice, groupByCompany, shouldGroupByCompany, SLICES } from '../collectionSlices';
 import { EMPLOYMENT, EMPLOYER_TYPES, ENGAGEMENT, HIRING_RELATIONSHIPS, MODULES, PLATFORMS, ROLES, applicationOpenLabel, employerTypeLabel, employmentLabel, hiringRelationshipLabel, published, relationshipLabel, scheduleLabel, workplaceLabel, when, whenZone } from '../labels';
 
@@ -64,8 +64,8 @@ export default function Feed({ filters, setFilters, onOpen }) {
     setDraft({ ...draft, module: values.join(',') });
   }
 
-  function setBoardSearchSelection(event) {
-    setBoardSearches([...event.target.selectedOptions].map((option) => option.value));
+  function toggleBoard(id) {
+    setBoardSearches((current) => toggleBoardSelection(current, id));
   }
 
   useEffect(() => {
@@ -172,17 +172,25 @@ export default function Feed({ filters, setFilters, onOpen }) {
           </select>
           <span className="mt-1 block text-xs text-[#6d665c]">Hold Ctrl and click to choose more than one module. Leave empty for any module.</span>
         </label>
-        <label className="text-sm md:col-span-2">Also search on
-          <select
-            multiple
-            className="field h-28"
-            value={boardSearches}
-            onChange={setBoardSearchSelection}
-          >
-            {BOARD_SEARCHES.map((board) => <option key={board.id} value={board.id}>{board.name}</option>)}
-          </select>
-          <span className="mt-1 block text-xs text-[#6d665c]">Optional. Selected boards open in new tabs when you click Search. LinkedIn, Indeed, and Glassdoor are not collected into this app.</span>
-        </label>
+        <fieldset className="min-w-0 border-0 p-0 text-sm md:col-span-2">
+          <legend>Also search on</legend>
+          <div className="field flex h-28 flex-col justify-center gap-1">
+            {BOARD_SEARCHES.map((board) => {
+              const selected = boardSearches.includes(board.id);
+              return (
+                <label key={board.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-0.5 hover:bg-[#fff6ef]">
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => toggleBoard(board.id)}
+                  />
+                  <span className={selected ? 'font-semibold text-copper' : undefined}>{board.name}</span>
+                </label>
+              );
+            })}
+          </div>
+          <span className="mt-1 block text-xs text-[#6d665c]">Click a board to select it, and click it again to clear it. More than one can stay selected. Selected boards open in new tabs when you click Search. LinkedIn, Indeed, and Glassdoor are not collected into this app.</span>
+        </fieldset>
         <label className="text-sm">Workplace
           <select className="field" value={draft.workplace} onChange={(event) => setDraft({ ...draft, workplace: event.target.value })}>
             <option value="">Any workplace</option>
