@@ -223,6 +223,9 @@ function cleanConfig(input) {
     companyIdentifier: String(config.companyIdentifier || '').trim(),
     pageUrl: String(config.pageUrl || '').trim(),
     oracleOnly: !!config.oracleOnly,
+    apiHost: String(config.apiHost || '').trim().toLowerCase(),
+    siteNumber: String(config.siteNumber || '').trim(),
+    siteUrl: String(config.siteUrl || '').trim(),
     region: config.region === 'eu' ? 'eu' : 'global',
     fetchDetails: !!config.fetchDetails,
     minIntervalMs: Math.min(Math.max(Number(config.minIntervalMs) || 1000, 0), 60000),
@@ -239,7 +242,7 @@ function resolvedStatus(payload) {
       error.status = 400;
       throw error;
     }
-    if (['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed'].includes(adapterType) && payload.termsReviewStatus !== 'public_read_documented') {
+    if (['greenhouse-job-board', 'lever-postings', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed', 'oracle-candidate-experience'].includes(adapterType) && payload.termsReviewStatus !== 'public_read_documented') {
       const error = new Error('Record a public-read terms review before enabling this adapter.');
       error.status = 400;
       throw error;

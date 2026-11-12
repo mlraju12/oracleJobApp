@@ -89,6 +89,20 @@ const ADAPTERS = [
     ],
   },
   {
+    id: 'oracle-candidate-experience',
+    label: 'Oracle Candidate Experience public search',
+    verified: true,
+    documentationUrl: 'https://docs.oracle.com/en/cloud/saas/human-resources/farws/op-recruitingcejobrequisitions-get.html',
+    accessMethod: 'public_api',
+    summary: 'Unauthenticated GET of the requisition list a public Candidate Experience career site shows. The site number comes from that site’s URL. Application POST is not implemented.',
+    limitations: [
+      'Checked on 2026-11-12. Oracle’s REST reference marks recruitingCEJobRequisitions as internal use. This adapter calls only the unauthenticated findReqs search the public career page uses, on a host matching *.fa.*.oraclecloud.com, with the site number taken from that page.',
+      'A wrong site number can return another site on the same host. Site numbers are not guessed from a company name.',
+      'Pagination uses limit and offset until a short page. TotalJobsCount must match the rows read before the list is treated as complete. A page cap or a failed later page stays partial and does not close listings.',
+      'A 401 or 403 stops the adapter. It does not bypass login, CAPTCHA, or access controls.',
+    ],
+  },
+  {
     id: 'public-structured',
     label: 'Public page JobPosting data',
     verified: true,
@@ -882,6 +896,10 @@ async function collectSource(source, deps) {
   if (source.adapterType === 'ashby-job-board') return collectAshby(source, deps);
   if (source.adapterType === 'smartrecruiters-postings') return collectSmartRecruiters(source, deps);
   if (source.adapterType === 'public-structured') return collectStructuredPage(source, deps);
+  if (source.adapterType === 'oracle-candidate-experience') {
+    const { collectOracleCandidateExperience } = require('./oracleCandidateExperience');
+    return collectOracleCandidateExperience(source, deps);
+  }
   if (source.adapterType === 'public-job-feed') {
     const { collectPublicJobFeed } = require('./publicJobs');
     return collectPublicJobFeed(source, deps);

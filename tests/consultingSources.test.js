@@ -13,8 +13,6 @@ const QUERYABLE = {
 const UNSUPPORTED = [
   'Cognizant',
   'Infovity',
-  'Argano',
-  'Inoapps',
   'Huron',
   'Tata Consultancy Services',
   'Infosys',
@@ -46,6 +44,18 @@ describe('consulting employer sources', () => {
       const config = board.adapterConfig;
       expect(config.oracleOnly).toBe(true);
       expect(config.companyIdentifier || config.boardName || config.boardToken).toBe(identifier);
+    }
+    for (const [name, host, site] of [
+      ['Argano', 'fa-eyau-saasfaprod1.fa.ocs.oraclecloud.com', 'CX_1'],
+      ['Inoapps', 'hza.fa.us1.oraclecloud.com', 'CX_2024'],
+    ]) {
+      const board = byName.get(name);
+      expect(board.adapterType).toBe('oracle-candidate-experience');
+      expect(board.status || 'enabled').toBe('enabled');
+      expect(board.hiringContext).toBe('consulting_firm');
+      expect(board.adapterConfig.apiHost).toBe(host);
+      expect(board.adapterConfig.siteNumber).toBe(site);
+      expect(board.adapterConfig.listings).toBeUndefined();
     }
     for (const name of UNSUPPORTED) {
       const board = byName.get(name);

@@ -54,13 +54,32 @@ function identifierFrom(url) {
   return /^[A-Za-z0-9_-]{1,80}$/.test(part) ? part : '';
 }
 
+function oracleCareerFromUrl(url) {
+  const host = url.hostname.toLowerCase();
+  if (!/^[a-z0-9-]+\.fa\.[a-z0-9]+\.oraclecloud\.com$/.test(host)) return null;
+  const match = url.pathname.match(/^(.*\/sites\/(CX(?:_[0-9]{1,6})?))(?:\/|$)/i);
+  if (!match) return null;
+  return {
+    platform: 'oracle_candidate_experience',
+    adapterType: 'oracle-candidate-experience',
+    boardIdentifier: match[2],
+    apiHost: host,
+    resolvedBoardUrl: `${url.origin}${match[1]}`,
+    documentationUrl: 'https://docs.oracle.com/en/cloud/saas/human-resources/farws/op-recruitingcejobrequisitions-get.html',
+    connectorStatus: 'supported',
+  };
+}
+
 function unsupportedHost(hostname) {
   const host = String(hostname || '').toLowerCase();
   if (host.endsWith('myworkdayjobs.com') || host.endsWith('myworkday.com')) {
     return { platform: 'workday', reason: 'The career board is Workday. This app does not call the undocumented Workday CXS endpoint.' };
   }
   if (host.endsWith('oraclecloud.com')) {
-    return { platform: 'oracle_recruiting', reason: 'Oracle documents recruitingCEJobRequisitions as internal use only. This app does not call it.' };
+    return {
+      platform: 'oracle_recruiting',
+      reason: 'This Oracle host has no Candidate Experience site number in the URL. The public search is not called without that site number.',
+    };
   }
   if (host.includes('successfactors') || host.endsWith('sapsf.com') || host.endsWith('sapsf.eu')) {
     return { platform: 'successfactors', reason: 'This SuccessFactors host has no public job-list API in this app.' };
@@ -79,6 +98,8 @@ function boardFromUrl(raw) {
     return null;
   }
   const host = url.hostname.toLowerCase();
+  const oracle = oracleCareerFromUrl(url);
+  if (oracle) return oracle;
   const documented = DOCUMENTED_BOARDS.find((board) => board.hosts.includes(host));
   if (documented) {
     const boardIdentifier = identifierFrom(url);
@@ -156,6 +177,20 @@ function adapterConfigFor(board) {
   }
   if (board.platform === 'ashby') return { boardName: board.boardIdentifier, oracleOnly: true, minIntervalMs: 400 };
   if (board.platform === 'smartrecruiters') return { companyIdentifier: board.boardIdentifier, oracleOnly: true, minIntervalMs: 400 };
+  if (board.platform === 'oracle_candidate_experience') {
+    let apiHost = board.apiHost || '';
+    try {
+      apiHost = apiHost || new URL(board.resolvedBoardUrl).hostname;
+    } catch {
+      apiHost = '';
+    }
+    return {
+      apiHost,
+      siteNumber: board.boardIdentifier,
+      siteUrl: board.resolvedBoardUrl,
+      minIntervalMs: 400,
+    };
+  }
   return {};
 }
 
@@ -213,6 +248,7 @@ async function linkSupportedSource(tenantId, lead) {
       lever: 'lever-postings',
       ashby: 'ashby-job-board',
       smartrecruiters: 'smartrecruiters-postings',
+      oracle_candidate_experience: 'oracle-candidate-experience',
     })[lead.platform],
     boardIdentifier: lead.boardIdentifier,
     resolvedBoardUrl: lead.resolvedBoardUrl,

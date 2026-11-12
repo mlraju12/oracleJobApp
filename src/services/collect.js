@@ -229,7 +229,7 @@ async function refreshSource(source, deps = {}) {
       source.failureCount = 0;
       if (source.status === 'failing') source.status = 'enabled';
       source.nextAttemptAt = new Date(now.getTime() + (source.refreshIntervalMinutes || 360) * 60000);
-    } else if (!result.error && ['public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed', 'external-search'].includes(source.adapterType)) {
+    } else if (!result.error && ['public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed', 'external-search', 'oracle-candidate-experience'].includes(source.adapterType)) {
       if (source.status === 'failing') source.status = 'enabled';
       source.nextAttemptAt = new Date(now.getTime() + (source.refreshIntervalMinutes || 360) * 60000);
     } else {
@@ -265,7 +265,7 @@ async function refreshSource(source, deps = {}) {
 function isDue(source, now) {
   if (!source) return false;
   if (!['enabled', 'failing'].includes(source.status)) return false;
-  if (!['greenhouse-job-board', 'lever-postings', 'public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed'].includes(source.adapterType)) return false;
+  if (!['greenhouse-job-board', 'lever-postings', 'public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed', 'oracle-candidate-experience'].includes(source.adapterType)) return false;
   if (source.nextAttemptAt && new Date(source.nextAttemptAt) > now) return false;
   return true;
 }
