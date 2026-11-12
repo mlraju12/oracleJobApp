@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Check, ExternalLink } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { api } from '../api';
 import { BOARD_SEARCHES, openBoardSearches, selectedModules, toggleBoardSelection } from '../boardSearches';
-import { activeSlice, applySlice, clearSlice, groupByCompany, shouldGroupByCompany, SLICES } from '../collectionSlices';
+import { activeSlice, applySlice, clearSlice, groupByCompany, shouldGroupByCompany, SLICES, toggleCompanyCollapsed } from '../collectionSlices';
 import { EMPLOYMENT, EMPLOYER_TYPES, ENGAGEMENT, HIRING_RELATIONSHIPS, MODULES, PLATFORMS, ROLES, applicationOpenLabel, employerTypeLabel, employmentLabel, hiringRelationshipLabel, published, relationshipLabel, scheduleLabel, workplaceLabel, when, whenZone } from '../labels';
 
 const EMPTY = {
@@ -41,6 +41,7 @@ export default function Feed({ filters, setFilters, onOpen }) {
   const [draft, setDraft] = useState(filters);
   const [queuedIds, setQueuedIds] = useState({});
   const [boardSearches, setBoardSearches] = useState([]);
+  const [collapsedCompanies, setCollapsedCompanies] = useState({});
 
   useEffect(() => {
     setDraft(filters);
@@ -319,31 +320,47 @@ export default function Feed({ filters, setFilters, onOpen }) {
       )}
       {data.opportunities.length > 0 && (groupCompanies ? (
         <div className="space-y-8">
-          {groupByCompany(data.opportunities).map((group, index) => (
-            <section key={group.key} className="space-y-3" aria-labelledby={`employer-group-${index}`}>
-              <h3 id={`employer-group-${index}`} className="flex items-center gap-3 px-1">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest font-display text-lg text-[#f7f1e6]">
-                  {(group.name || '?').trim().slice(0, 1).toUpperCase()}
-                </span>
-                <span className="min-w-0 break-words text-xl text-ink">{group.name}</span>
-                <span className="ml-auto shrink-0 font-sans text-sm font-normal text-[#6d665c]">
-                  {group.jobs.length === 1 ? '1 listing' : `${group.jobs.length} listings`}
-                </span>
-              </h3>
-              <div className="space-y-3 border-l-2 border-line pl-3 sm:pl-4">
-                {group.jobs.map((opportunity) => (
-                  <OpportunityCard
-                    key={opportunity.id}
-                    opportunity={opportunity}
-                    queued={!!queuedIds[opportunity.id]}
-                    onOpen={onOpen}
-                    onQueued={() => setQueuedIds((current) => ({ ...current, [opportunity.id]: true }))}
-                    onError={setError}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+          {groupByCompany(data.opportunities).map((group, index) => {
+            const collapsed = !!collapsedCompanies[group.key];
+            const jobsId = `employer-jobs-${index}`;
+            return (
+              <section key={group.key} className="space-y-3" aria-labelledby={`employer-group-${index}`}>
+                <div className="flex flex-wrap items-center gap-3 px-1">
+                  <h3 id={`employer-group-${index}`} className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest font-display text-lg text-[#f7f1e6]">
+                      {(group.name || '?').trim().slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 break-words text-xl text-ink">{group.name}</span>
+                  </h3>
+                  <span className="shrink-0 font-sans text-sm font-normal text-[#6d665c]">
+                    {group.jobs.length === 1 ? '1 listing' : `${group.jobs.length} listings`}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-quiet shrink-0"
+                    aria-expanded={!collapsed}
+                    aria-controls={jobsId}
+                    onClick={() => setCollapsedCompanies((current) => toggleCompanyCollapsed(current, group.key))}
+                  >
+                    {collapsed ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+                    {collapsed ? 'Expand' : 'Minimize'}
+                  </button>
+                </div>
+                <div id={jobsId} hidden={collapsed} className="space-y-3 border-l-2 border-line pl-3 sm:pl-4">
+                  {group.jobs.map((opportunity) => (
+                    <OpportunityCard
+                      key={opportunity.id}
+                      opportunity={opportunity}
+                      queued={!!queuedIds[opportunity.id]}
+                      onOpen={onOpen}
+                      onQueued={() => setQueuedIds((current) => ({ ...current, [opportunity.id]: true }))}
+                      onError={setError}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-3">

@@ -112,6 +112,14 @@ export function shouldGroupByCompany(filters) {
     .every((key) => fieldValue(filters, key) === String(CLEARED_SLICE[key] || ''));
 }
 
+export function toggleCompanyCollapsed(collapsed, key) {
+  const current = collapsed && typeof collapsed === 'object' ? { ...collapsed } : {};
+  const id = String(key || '').trim();
+  if (!id) return current;
+  current[id] = !current[id];
+  return current;
+}
+
 export function groupByCompany(opportunities) {
   const groups = [];
   const index = new Map();
