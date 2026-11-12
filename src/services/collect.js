@@ -229,7 +229,7 @@ async function refreshSource(source, deps = {}) {
       source.failureCount = 0;
       if (source.status === 'failing') source.status = 'enabled';
       source.nextAttemptAt = new Date(now.getTime() + (source.refreshIntervalMinutes || 360) * 60000);
-    } else if (!result.error && ['public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed'].includes(source.adapterType)) {
+    } else if (!result.error && ['public-search', 'dice-mcp', 'ashby-job-board', 'smartrecruiters-postings', 'public-structured', 'public-job-feed', 'external-search'].includes(source.adapterType)) {
       if (source.status === 'failing') source.status = 'enabled';
       source.nextAttemptAt = new Date(now.getTime() + (source.refreshIntervalMinutes || 360) * 60000);
     } else {

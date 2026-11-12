@@ -38,6 +38,7 @@ const { memberSite, attemptMemberLogin } = require('./services/memberLogin');
 const { createStorage, encryptSecret, decryptSecret } = require('./services/platform');
 const { createBullQueue, redisUrl } = require('./services/queue');
 const { moduleFilter } = require('./services/boardSearches');
+const { selectedModuleNames, externalSearchesFor } = require('./services/externalSearch');
 
 authenticator.options = { window: 1 };
 
@@ -509,19 +510,30 @@ async function createApp(options = {}) {
         opportunityId: { $in: items.map((item) => item._id) },
       });
       const savedById = new Map(saved.map((item) => [String(item.opportunityId), item]));
-      const sourceRows = await EmployerSource.find({ tenantId: req.auth.tenantId, synthetic: { $ne: true } }).select('name adapterType status');
-      const sourceById = new Map(sourceRows.map((source) => [String(source._id), source]));
       const started = await kickCatalog(req.auth.tenantId, false);
+      const sourceRows = await EmployerSource.find({ tenantId: req.auth.tenantId, synthetic: { $ne: true } }).select('name adapterType status catalogKey adapterConfig');
+      const sourceById = new Map(sourceRows.map((source) => [String(source._id), source]));
       const coverage = await coverageSummary(req.auth.tenantId);
       res.json({
         total,
         scope: req.query.scope === 'usa' ? 'usa' : 'any',
         seenAt,
         coverage,
+        externalSearches: externalSearchesFor(sourceRows, req.query),
         sources: sourceRows
           .filter((source) => source.status !== 'unsupported')
-          .map((source) => ({ id: String(source._id), name: source.name, adapterType: source.adapterType }))
-          .sort((left, right) => (left.adapterType === 'dice-mcp' ? -1 : right.adapterType === 'dice-mcp' ? 1 : left.name.localeCompare(right.name))),
+          .map((source) => ({
+            id: String(source._id),
+            name: source.name,
+            adapterType: source.adapterType,
+            handoff: source.adapterType === 'external-search',
+          }))
+          .sort((left, right) => {
+            if (!!left.handoff !== !!right.handoff) return left.handoff ? 1 : -1;
+            if (left.adapterType === 'dice-mcp' && right.adapterType !== 'dice-mcp') return -1;
+            if (right.adapterType === 'dice-mcp' && left.adapterType !== 'dice-mcp') return 1;
+            return left.name.localeCompare(right.name);
+          }),
         opportunities: items.map((item) => {
           const source = sourceById.get(String(item.sourceId));
           return presentOpportunity(item, savedById.get(String(item._id)), {
@@ -1111,6 +1123,9 @@ async function createApp(options = {}) {
     try {
       const source = await EmployerSource.findOne({ _id: req.params.id, tenantId: req.auth.tenantId });
       if (!source) return res.status(404).json({ error: 'Source not found.' });
+      if (source.adapterType === 'external-search') {
+        return res.status(409).json({ error: 'This source opens a public search from the opportunities list. It is not collected.' });
+      }
       if (!['enabled', 'failing'].includes(source.status)) {
         return res.status(409).json({ error: 'Enable the source before refresh. Paused and unsupported sources are not collected.' });
       }
@@ -1324,7 +1339,7 @@ function sanitizeFilters(filters) {
     q: String(source.q || '').slice(0, 80),
     employmentType: String(source.employmentType || ''),
     workplace: String(source.workplace || ''),
-    module: String(source.module || '').slice(0, 400),
+    module: selectedModuleNames(source.module).join(',').slice(0, 400),
     roleCategory: String(source.roleCategory || ''),
     platform: String(source.platform || ''),
     listingStatus: String(source.listingStatus || ''),
@@ -1372,7 +1387,7 @@ function opportunityFilter(tenantId, query) {
   if (query.platform) filter['oracle.platform'] = { $in: String(query.platform).split(',').map((item) => item.trim()).filter(Boolean) };
   if (query.employmentType) filter.employmentType = String(query.employmentType);
   if (query.workplace) filter.workplace = String(query.workplace);
-  const modules = moduleFilter(query.module);
+  const modules = moduleFilter(selectedModuleNames(query.module).join(','));
   if (modules) filter['oracle.modules'] = modules;
   if (query.roleCategory) filter['oracle.roleCategory'] = String(query.roleCategory);
   if (query.listingStatus) filter.listingStatus = String(query.listingStatus);

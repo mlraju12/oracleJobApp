@@ -114,6 +114,18 @@ const ADAPTERS = [
     ],
   },
   {
+    id: 'external-search',
+    label: 'Public job-board search',
+    verified: true,
+    documentationUrl: null,
+    accessMethod: 'public_page',
+    summary: 'Opens the public search on LinkedIn, Indeed, or Glassdoor with the keyword, location, and filters that site accepts. Those boards do not offer a job list this server can read without a sign-in or a partner key. No listings are stored from the handoff.',
+    limitations: [
+      'Checked on 2026-11-02. LinkedIn’s partner jobs API requires a sign-in. Indeed’s RSS URL returned HTTP 404. Glassdoor’s job search returned HTTP 403.',
+      'The opportunities list explains the handoff and links to the public search. It does not invent job rows for these boards.',
+    ],
+  },
+  {
     id: 'manual',
     label: 'Manual public URL',
     verified: true,
@@ -881,6 +893,17 @@ async function collectSource(source, deps) {
   if (source.adapterType === 'dice-mcp') {
     const { collectDice } = require('./dice');
     return collectDice(source, deps);
+  }
+  if (source.adapterType === 'external-search') {
+    return {
+      listings: [],
+      complete: false,
+      applyAbsencePolicy: false,
+      pages: 0,
+      requests: 0,
+      warnings: ['This source opens a public search. It does not collect listings.'],
+      completeness: { kind: 'external-search.handoff', verified: false, fetched: 0 },
+    };
   }
   throw new SourceFetchError(`Adapter ${source.adapterType} cannot run a source-wide refresh.`, { retryable: false });
 }
